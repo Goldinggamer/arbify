@@ -1,0 +1,31 @@
+{
+  "name": "arbify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.ts",
+    "dev:web": "vite",
+    "scan": "node server/index.ts",
+    "scan:once": "node scripts/scan-once.ts",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "node --test \"server/**/*.test.ts\" \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "impit": "^0.14.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5"
+  }
+}

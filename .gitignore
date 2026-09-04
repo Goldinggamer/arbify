@@ -1,0 +1,19 @@
+node_modules
+dist
+.DS_Store
+*.log
+
+# Build-Zwischenstand von tsc, gehört nicht ins Repository.
+tsconfig.tsbuildinfo
+
+# Kurzlebige Dateien beim Testen.
+.watch-tmp.ts
+
+# Gespiegelter Filter und das Gedächtnis der Telefonmeldungen. Enthält den
+# Filter des Nutzers und — wichtiger — das ntfy-Thema, das der einzige Schutz
+# des Meldekanals ist. Gehört nicht ins Repository.
+.arbify-alerts.json
+
+# Zugangsdaten aller Art, falls sie je über die Umgebung gesetzt werden.
+.env
+.env.*
