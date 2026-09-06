@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import type { BetWarningId, Filters, PushConfig, Settings, SortKey } from '../types'
 import { BOOKMAKERS } from '../data/bookmakers'
-import { ALL_MARKET_IDS, ALL_SPORT_IDS, MARKET_FAMILIES, SPORTS, familiesForSports } from '../data/markets'
+import { ALL_SPORT_IDS, MARKET_FAMILIES, SPORTS, familiesForSports } from '../data/markets'
 import { BET_WARNINGS } from '../data/warnings'
 import { BookLogo } from './BookLogo'
 import { IconBolt, IconCheck, IconLive, IconSearch, IconStar, IconX } from './icons'

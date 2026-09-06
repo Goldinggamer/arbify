@@ -83,7 +83,7 @@ type ApiSnapshot = {
 
 const KNOWN_WARNINGS = new Set<string>(ALL_WARNING_IDS)
 
-export function toOpportunity(o: ApiOpportunity): Opportunity {
+function toOpportunity(o: ApiOpportunity): Opportunity {
   return {
     id: o.id,
     sport: o.sport,

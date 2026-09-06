@@ -67,5 +67,3 @@ export const ADAPTERS: BookmakerAdapter[] = [
   sport888de,
   admiralbet,
 ]
-
-export const ADAPTER_BY_ID = new Map(ADAPTERS.map((a) => [a.id, a]))

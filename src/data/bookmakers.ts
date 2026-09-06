@@ -33,5 +33,3 @@ export const BOOKMAKERS: Bookmaker[] = [
 export const BOOKMAKER_BY_ID: Record<string, Bookmaker> = Object.fromEntries(
   BOOKMAKERS.map((b) => [b.id, b]),
 )
-
-export const SPORTS = ['Fußball', 'Basketball', 'Tennis', 'Eishockey', 'Handball'] as const

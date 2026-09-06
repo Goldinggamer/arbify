@@ -10,7 +10,7 @@ import { DEFAULT_WINDOW_HOURS, hoursToMs } from './window.ts'
  * pro Outcome die dort beste Quote neu aus. Gibt `null` zurück, wenn dadurch
  * keine Arbitrage mehr übrig bleibt.
  */
-export function restrictToBookmakers(opp: Opportunity, allowed: Set<string>): Opportunity | null {
+function restrictToBookmakers(opp: Opportunity, allowed: Set<string>): Opportunity | null {
   const outcomes = opp.outcomes.map((o) => {
     const candidates = o.all.filter((b) => allowed.has(b.bookmakerId))
     if (!candidates.length) return null

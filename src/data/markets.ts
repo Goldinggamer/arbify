@@ -22,8 +22,6 @@ export const SPORTS = [
   { id: 'Darts', label: 'Darts' },
 ] as const
 
-export type SportId = (typeof SPORTS)[number]['id']
-
 export const ALL_SPORT_IDS: string[] = SPORTS.map((s) => s.id)
 
 /**
@@ -75,13 +73,7 @@ export const MARKET_FAMILIES = [
   { id: 'OE', label: 'Gerade/Ungerade', sports: ALL },
 ] as const
 
-export type MarketFamilyId = (typeof MARKET_FAMILIES)[number]['id']
-
 export const ALL_MARKET_IDS: string[] = MARKET_FAMILIES.map((m) => m.id)
-
-export const MARKET_LABEL: Record<string, string> = Object.fromEntries(
-  MARKET_FAMILIES.map((m) => [m.id, m.label]),
-)
 
 /** Die Familien, die bei den gewählten Sportarten überhaupt vorkommen können. */
 export function familiesForSports(sports: string[]) {

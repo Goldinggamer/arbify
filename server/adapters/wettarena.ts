@@ -333,7 +333,9 @@ export const wettarena: BookmakerAdapter = {
           away,
           startTime: start.toISOString(),
           isLive: start.getTime() <= Date.now(),
-          url: `${HOST}/`,
+          // Die Website adressiert Partien als `/eventdetail/{MatchId}` —
+          // abgelesen, indem eine Partie angeklickt und die Adresse notiert wurde.
+          url: `https://wettarena.de/eventdetail/${id}`,
           outcomes,
           fetchedAt: now,
         })

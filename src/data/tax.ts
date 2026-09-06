@@ -45,11 +45,9 @@
  * die Angabe ersetzt keinen Blick in den eigenen Wettschein.
  */
 
-/** Steuersatz nach § 17 Abs. 2 Rennwett- und Lotteriegesetz. */
-export const TAX_RATE = 0.053
-
-// Der Satz steht hier als Beleg für die Texte, nicht als Rechengröße: die App
-// zieht ihn nirgends ab. Wird das je gewünscht, ist dies die eine Stelle.
+// Der Steuersatz — 5,3 % nach § 17 Abs. 2 Rennwett- und Lotteriegesetz —
+// ist in dieser App bewusst keine Rechengröße: sie zieht ihn nirgends ab, die
+// Hinweistexte unten nennen ihn nur. Wird das je gewünscht, gehört er hierher.
 
 export type TaxMode = 'none' | 'stake' | 'gross' | 'profit'
 

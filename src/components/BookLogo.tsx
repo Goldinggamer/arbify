@@ -27,7 +27,3 @@ export function BookLogo({
     </span>
   )
 }
-
-export function BookName({ id }: { id: string }) {
-  return <>{BOOKMAKER_BY_ID[id]?.name ?? id}</>
-}

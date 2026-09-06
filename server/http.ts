@@ -13,7 +13,7 @@ import { Impit } from 'impit'
  * langsamer und würde bei ~24 Anbietern im Sekundentakt nicht skalieren.
  */
 
-export type Transport = 'plain' | 'impit'
+type Transport = 'plain' | 'impit'
 
 const impit = new Impit({ browser: 'chrome' })
 
@@ -48,7 +48,7 @@ const DEFAULT_HEADERS: Record<string, string> = {
  * `minIntervalMs` ist eine **Untergrenze**. Gibt ein Adapter einen größeren
  * Wert mit, gilt seiner; ein kleinerer wird angehoben.
  */
-export type HostPolicy = {
+type HostPolicy = {
   /** Mindestabstand zwischen zwei Anfragen an diesen Host (ms) */
   minIntervalMs: number
   /** Wie viele Anfragen gleichzeitig unterwegs sein dürfen */
@@ -276,7 +276,7 @@ export type FetchOptions = {
   retryOn403?: boolean
 }
 
-export class HttpError extends Error {
+class HttpError extends Error {
   status: number
   url: string
   body: string

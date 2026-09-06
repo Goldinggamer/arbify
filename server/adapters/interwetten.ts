@@ -116,16 +116,10 @@ function toSide(tip: string, market: CanonicalMarket): Side | null {
   return null
 }
 
-/** Zieht die Linie aus dem Marktnamen, z.B. "Über/Unter 2,5". */
-function lineOf(marketName: string): number | null {
-  const m = /(-?\d+[.,]\d+|\d+)/.exec(marketName)
-  if (!m) return null
-  const n = Number(m[1].replace(',', '.'))
-  return Number.isFinite(n) ? n : null
-}
-
 type ParsedEvent = {
   eventId: string
+  /** Pfad zur Partie, wie er im Markup steht — mit Slug, sonst 404. */
+  path: string
   home: string
   away: string
   startTime: string
@@ -143,7 +137,10 @@ function parsePage(html: string, market: CanonicalMarket): ParsedEvent[] {
   const blocks = html.split(/<li class="s-event\b/).slice(1)
 
   for (const block of blocks) {
-    const idMatch = /\/de\/sportwetten\/e\/(\d+)\//.exec(block)
+    // Der Pfad wird **mitsamt Slug** behalten: `/e/{id}` allein antwortet
+    // die Seite mit 404, erst `/e/{id}/{slug}` führt zur Partie. Gemessen an
+    // zwei Partien mit je drei Schreibweisen — nur die vollständige ging durch.
+    const idMatch = /(\/de\/sportwetten\/e\/(\d+)\/[a-z0-9-]+)/.exec(block)
     if (!idMatch) continue
     const players = [...block.matchAll(/<strong class="s-event-player">([^<]*)<\/strong>/g)].map((m) =>
       decode(m[1]),
@@ -159,11 +156,8 @@ function parsePage(html: string, market: CanonicalMarket): ParsedEvent[] {
     for (const mk of block.matchAll(
       /data-betting="\[(\d+),(\d+),&quot;[^&]*&quot;,&quot;([^&]*)&quot;[^"]*"([\s\S]*?)(?=<div id="js-market-|<div class="s-event-other|$)/g,
     )) {
-      // Der Marktname wird nicht mehr ausgewertet: die Seite liefert je
-      // Sportart genau einen Hauptmarkt, und welcher das ist, steht schon in
-      // `SPORTS`. `lineOf` bleibt für künftige Linienmärkte erhalten.
-      void decode(mk[3])
-
+      // Der Marktname (mk[3]) wird nicht ausgewertet: die Seite liefert je
+      // Sportart genau einen Hauptmarkt, und welcher das ist, steht in `SPORTS`.
       for (const oc of mk[4].matchAll(
         /data-betting="\[(\d+),&quot;([^&]*)&quot;[^"]*"[\s\S]{0,400}?class="js-outcome-odd s-outcome-odd">([\d.]+)</g,
       )) {
@@ -174,7 +168,7 @@ function parsePage(html: string, market: CanonicalMarket): ParsedEvent[] {
     }
     if (!outcomes.length) continue
 
-    events.push({ eventId: idMatch[1], home: players[0], away: players[1], startTime, outcomes })
+    events.push({ eventId: idMatch[2], path: idMatch[1], home: players[0], away: players[1], startTime, outcomes })
   }
   return events
 }
@@ -216,7 +210,7 @@ export const interwetten: BookmakerAdapter = {
         away: e.away,
         startTime: e.startTime,
         isLive: new Date(e.startTime).getTime() <= Date.now(),
-        url: `${HOST}/de/sportwetten/e/${e.eventId}`,
+        url: `${HOST}${e.path}`,
         outcomes: e.outcomes,
         fetchedAt: now,
         })

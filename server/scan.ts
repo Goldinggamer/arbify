@@ -22,12 +22,12 @@ import type { CanonicalMarket, MatchedEvent, Side } from './types.ts'
  * jeder Nutzer vor dem Setzen selbst prüfen muss, gehört nicht in die
  * Einsatzaufteilung.
  */
-export type ScanQuote = {
+type ScanQuote = {
   bookmakerId: string
   odds: number
 }
 
-export type ScanOutcome = {
+type ScanOutcome = {
   label: string
   best: ScanQuote
   all: ScanQuote[]

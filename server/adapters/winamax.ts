@@ -147,7 +147,7 @@ function lineOf(special: string | undefined): number | null {
  * `specialBetValue` als `setnr=1`. Der Titel trägt sie zwar zusätzlich
  * ("1. Satz - Gewinner"), aber das Feld ist die verlässlichere Quelle.
  */
-export function toTennisMarket(bet: Bet, home: string, away: string): CanonicalMarket | null {
+export function toTennisMarket(bet: Bet): CanonicalMarket | null {
   const title = (bet.betTitle ?? '').trim()
   const t = title.toLowerCase()
   const template = bet.template ?? ''
@@ -456,7 +456,7 @@ function outcomesFor(
     if (!bet || bet.matchId !== matchId || bet.available === false) continue
     const market =
       sport === 'TENNIS'
-        ? toTennisMarket(bet, home, away)
+        ? toTennisMarket(bet)
         : sport === 'FOOTBALL'
           ? toMarket(bet, home, away)
           : toCourtMarket(bet, home, away, sport)

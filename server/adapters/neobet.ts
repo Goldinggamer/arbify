@@ -60,6 +60,30 @@ type NbMatch = {
 const nameOf = (v: NbTeam | { name?: string } | string | undefined): string =>
   typeof v === 'string' ? v : (v?.name ?? '')
 
+const slug = (s: string): string =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
+/**
+ * Tiefenlink auf die Partie.
+ *
+ * Die Website adressiert Partien als
+ * `/de/Sportwetten/Heute/{Datum}-{Heim}-vs-{Gast}-{Nummer}-{Sportkürzel}-NEO`,
+ * abgelesen aus ihren eigenen Links, z.B.
+ * `…/Heute/2026-09-06-Botafogo-RJ-vs-Palmeiras-SP-4032325-FB-NEO`. Die
+ * Kennung im Feed ist dieselbe Nummer in anderer Reihenfolge:
+ * `NEO|FB-4032325`. Lässt sie sich nicht zerlegen, bleibt es beim Tagesprogramm.
+ */
+export function eventUrl(id: string, begin: string, home: string, away: string): string {
+  const m = /^NEO\|([A-Z]+)-(\d+)$/.exec(id)
+  const day = begin.slice(0, 10)
+  if (!m || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return 'https://neobet.de/de/Sportwetten/Heute'
+  return `https://neobet.de/de/Sportwetten/Heute/${day}-${slug(home)}-vs-${slug(away)}-${m[2]}-${m[1]}-NEO`
+}
+
 /** `Goal_RT_…` = reguläre Spielzeit, `Goal_HT1_…` = 1. Halbzeit. */
 function periodOf(key: string): Period | null {
   if (/_RT_/.test(key)) return 'FT'
@@ -226,7 +250,7 @@ export const neobet: BookmakerAdapter = {
         away,
         startTime: new Date(start).toISOString(),
         isLive: start <= Date.now(),
-        url: 'https://neobet.de/de/Sportwetten/Heute',
+        url: eventUrl(m.id, m.begin, home, away),
         outcomes,
         fetchedAt: now,
       })

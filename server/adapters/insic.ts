@@ -344,7 +344,10 @@ function makeAdapter(tenant: Tenant): BookmakerAdapter {
             away: away.trim(),
             startTime: new Date(e.expires_ts * 1000).toISOString(),
             isLive: e.live_status === 'enabled',
-            url: tenant.web,
+            // Die Website öffnet eine Partie über `/?events={id}` — dieselbe
+            // Kennung wie im Eventservice. Der frühere Link auf `/wetten` war
+            // eine 404-Seite.
+            url: `${tenant.web}/?events=${eventId}`,
             outcomes,
             fetchedAt: new Date().toISOString(),
           })
@@ -360,5 +363,5 @@ export const sportwettende = makeAdapter({
   id: 'sportwettende',
   name: 'Sportwetten.de',
   base: 'https://eventservice.sportwetten.de',
-  web: 'https://www.sportwetten.de/wetten',
+  web: 'https://www.sportwetten.de',
 })

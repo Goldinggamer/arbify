@@ -10,6 +10,7 @@ import { toMarket as bwinMarket } from './bwin.ts'
 import { toOutcomes as betanoToOutcomes } from './betano.ts'
 import { toTennisMarket as winamaxTennis, toSide as winamaxSide } from './winamax.ts'
 import { toTennisMarket as tipicoTennis } from './tipico.ts'
+import { eventUrl as neobetUrl } from './neobet.ts'
 import { toTennisMarket as bcTennisMarket } from './betconstruct.ts'
 
 /** VBET legt die Handicap-Linie am Heim-Outcome ab, nicht am Markt. */
@@ -399,7 +400,7 @@ test('ein wirklich unbekannter Markt wird weiterhin gemeldet', () => {
 // -------------------------------------------------------- Tennis: Winamax
 
 const winaTennis = (betTitle: string, template: string, special?: string) =>
-  winamaxTennis({ betId: 1, matchId: 1, betTitle, template, specialBetValue: special }, 'Kei Nishikori', 'Juncheng Shang')
+  winamaxTennis({ betId: 1, matchId: 1, betTitle, template, specialBetValue: special })
 
 test('Winamax Tennis: Satznummer steht im specialBetValue, nicht im Titel', () => {
   assert.equal(key(winaTennis('Gewinner', '2way', 'type=live')), '2WAY|FT|-|-')
@@ -505,4 +506,29 @@ test('BetConstruct Tennis: die Satznummer steht nur im Marktnamen', () => {
   assert.equal(key(bcTennis('P1P2', 'Sieger')), '2WAY|FT|-|-')
   // Ohne Satzangabe im Namen nicht raten.
   assert.equal(bcTennis('SetWinner', 'Sieger'), null)
+})
+
+/* ------------------------------------------------------------ Tiefenlinks */
+
+/**
+ * Ein Link, der auf der Startseite landet, kostet bei jeder Meldung die
+ * Suche von Hand — und bei einer Arbitrage zählt die Minute. Die Muster hier
+ * sind von den Websites abgelesen, nicht erraten.
+ */
+
+test('NEO.bet: Tiefenlink aus Feed-Kennung und Anstoßdatum', () => {
+  // Abgelesen: …/Heute/2026-09-06-Botafogo-RJ-vs-Palmeiras-SP-4032325-FB-NEO
+  assert.equal(
+    neobetUrl('NEO|FB-4032325', '2026-09-06T22:30:00Z', 'Botafogo RJ', 'Palmeiras SP'),
+    'https://neobet.de/de/Sportwetten/Heute/2026-09-06-Botafogo-RJ-vs-Palmeiras-SP-4032325-FB-NEO',
+  )
+  // Tennis trägt ein anderes Kürzel; Sonderzeichen fallen aus dem Slug.
+  assert.equal(
+    neobetUrl('NEO|TN-589969', '2026-09-06T12:00:00Z', 'Pegula, Jessica', 'Cîrstea, Sorana'),
+    'https://neobet.de/de/Sportwetten/Heute/2026-09-06-Pegula-Jessica-vs-Cirstea-Sorana-589969-TN-NEO',
+  )
+})
+
+test('NEO.bet: unbekannte Kennung fällt auf das Tagesprogramm zurück', () => {
+  assert.equal(neobetUrl('4032325', '2026-09-06T22:30:00Z', 'A', 'B'), 'https://neobet.de/de/Sportwetten/Heute')
 })

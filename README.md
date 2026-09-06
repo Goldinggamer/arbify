@@ -45,7 +45,7 @@ npm run scan:once
 ```
 
 Rechenkern, Matcher, Marktmodell und die Marktzuordnung der Adapter sind mit
-`node:test` abgedeckt — 65 Tests, ohne Netz:
+`node:test` abgedeckt — 155 Tests, ohne Netz:
 
 ```bash
 npm test
@@ -55,6 +55,13 @@ Streuung über mehrere Durchläufe messen (drei volle Sweeps hintereinander):
 
 ```bash
 node scripts/variance.ts
+```
+
+Tiefenlinks aller Anbieter gegen die echten Websites prüfen — Status,
+Weiterleitung, Seitentitel und ob die Teamnamen im HTML stehen:
+
+```bash
+node scripts/check-links.ts
 ```
 
 ## Aufbau
@@ -155,7 +162,7 @@ Drei Zugriffsmuster, die sich im Pilot gezeigt haben:
 | bwin | Entain | `/cds-api/bettingoffer/…` | Sportradar-ID |
 | Sportingbet | Entain | dieselbe API, anderer Host | eine Zeile Konfiguration |
 | ODDSET | Entain | dieselbe API, anderer Host | eine Zeile Konfiguration |
-| LeoVegas | Kambi | `eu-offering-api.kambicdn.com` | Quoten als Ganzzahl ×1000 |
+| LeoVegas | Kambi | `eu-offering-api.kambicdn.com`, Kennung `leode` | Quoten als Ganzzahl ×1000; `leo` ist ein anderes Buch |
 | 888sport | Spectate | `/spectate/inplay-req/getScheduledEvents` | Sitzung nötig, nur Siegwette |
 | ~~888sport (IT)~~ | Kambi | dieselbe API, Marke `888it` | gebaut, aber **abgeschaltet** — siehe unten |
 | Winamax | eigen | `PRELOADED_STATE` im HTML | ~900 Partien in **einem** Abruf |

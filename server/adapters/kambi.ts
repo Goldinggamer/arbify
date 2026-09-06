@@ -222,7 +222,7 @@ export function toMarket(
  * Spiele-Handicap über −1,5 — und dann würde ein Satz-Bein gegen ein
  * Spiele-Bein gerechnet.
  */
-export function toTennisMarket(
+function toTennisMarket(
   offer: BetOffer,
   home: string,
   away: string,
@@ -575,7 +575,10 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
       away,
       startTime: new Date(e.start).toISOString(),
       isLive: e.state === 'STARTED',
-      url: brand.eventUrl?.(e.id) ?? `https://${brand.webHost}/de-de/sports/event/${e.id}`,
+      // Der Kambi-Client routet über den Hash: `/de-de/sportwetten#event/{id}`.
+      // Der frühere Pfad `/de-de/sports/event/{id}` war bei LeoVegas eine
+      // 404-Seite — jede Partie musste von Hand gesucht werden.
+      url: brand.eventUrl?.(e.id) ?? `https://${brand.webHost}/de-de/sportwetten#event/${e.id}`,
       outcomes,
       fetchedAt: new Date().toISOString(),
     }
@@ -630,10 +633,21 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
   }
 }
 
+/**
+ * Kennung `leode`, nicht `leo` — das ist ein **anderes Buch**.
+ *
+ * Nachgemessen am 6. September 2026: die Website leovegas.de fragt die
+ * Offering-API unter `leode` ab. `leo` liefert 271 Fußballpartien, `leode`
+ * 322, gemeinsam haben sie nur 58 — und von 43 gemeinsamen 1X2-Märkten
+ * weichen 7 in der Quote ab (Juventus – Milan: 2,75/1,80/4,80 gegen
+ * 2,85/1,90/5,10). Mit `leo` verglich der Scanner also Quoten, die auf
+ * leovegas.de gar nicht setzbar waren, und jeder dritte Tiefenlink lief auf
+ * eine Partie, die es dort nicht gab.
+ */
 export const leovegas = makeAdapter({
   id: 'leovegas',
   name: 'LeoVegas',
-  code: 'leo',
+  code: 'leode',
   webHost: 'www.leovegas.de',
 })
 

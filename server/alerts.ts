@@ -232,7 +232,7 @@ export function formatMessage(o: Opportunity): PushMessage {
 /** `ScanOpportunity` des Servers → `Opportunity`, wie der Filter ihn erwartet. */
 const KNOWN = new Set<string>(ALL_WARNING_IDS)
 
-export function toOpportunity(o: ScanOpportunity): Opportunity {
+function toOpportunity(o: ScanOpportunity): Opportunity {
   return {
     id: o.id,
     sport: o.sport,

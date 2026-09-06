@@ -105,9 +105,6 @@ let discoveryInFlight: Promise<ScanSnapshot> | null = null
 let refreshInFlight: Promise<ScanSnapshot> | null = null
 
 export const getSnapshot = (): ScanSnapshot => snapshot
-/** Rohbestand des letzten Durchlaufs — für Analyse-Skripte. */
-export const getRawPool = (): RawEvent[] => rawPool
-export const isBusy = (): boolean => !!discoveryInFlight || !!refreshInFlight
 
 /* ------------------------------------------------------------- Auswertung */
 

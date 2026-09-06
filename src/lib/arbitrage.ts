@@ -1,7 +1,7 @@
 import type { Opportunity, Settings } from '../types'
 import { taxOf } from '../data/tax.ts'
 
-export type StakeLeg = {
+type StakeLeg = {
   index: number
   label: string
   bookmakerId: string

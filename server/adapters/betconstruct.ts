@@ -61,8 +61,9 @@ type BcGame = {
   market?: Record<string, BcMarket>
 }
 type BcCompetition = { id?: number; name?: string; game?: Record<string, BcGame> }
-type BcRegion = { id?: number; name?: string; competition?: Record<string, BcCompetition> }
-type BcSport = { id?: number; name?: string; region?: Record<string, BcRegion> }
+/** `alias` ist der URL-Baustein der Website ("Soccer", "England"), nicht der Anzeigename. */
+type BcRegion = { id?: number; name?: string; alias?: string; competition?: Record<string, BcCompetition> }
+type BcSport = { id?: number; name?: string; alias?: string; region?: Record<string, BcRegion> }
 
 function periodOf(type: string, name: string): Period {
   const s = `${type} ${name}`.toLowerCase()
@@ -269,6 +270,20 @@ function toSide(e: BcEvent, market: CanonicalMarket): Side | null {
   return null
 }
 
+/**
+ * Tiefenlink auf die Partie.
+ *
+ * Die Website adressiert Partien als
+ * `/sport-wetten/match/{Sport-Alias}/{Region-Alias}/{Wettbewerb}/{Partie}` —
+ * abgelesen aus den Links der Seite selbst, z.B.
+ * `/sport-wetten/match/Soccer/England/538/30722944`. Fehlt ein Baustein,
+ * bleibt es beim Sportprogramm; ein halber Pfad landet sonst auf 404.
+ */
+function eventUrl(base: string, sport: BcSport, region: BcRegion, comp: BcCompetition, game: BcGame): string {
+  if (!sport.alias || !region.alias || comp.id == null || game.id == null) return `${base}/sport-wetten`
+  return `${base}/sport-wetten/match/${sport.alias}/${region.alias}/${comp.id}/${game.id}`
+}
+
 function makeAdapter(brand: Brand): BookmakerAdapter {
   const socket = new RpcSocket({
     url: brand.wsUrl,
@@ -294,8 +309,8 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
         params: {
           source: 'betting',
           what: {
-            sport: ['id', 'name'],
-            region: ['id', 'name'],
+            sport: ['id', 'name', 'alias'],
+            region: ['id', 'name', 'alias'],
             competition: ['id', 'name'],
             game: ['id', 'team1_name', 'team2_name', 'start_ts', 'is_live'],
             market: ['id', 'name', 'type', 'base', 'group_name'],
@@ -352,7 +367,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
               away,
               startTime: new Date(game.start_ts * 1000).toISOString(),
               isLive: game.is_live === 1,
-              url: `${brand.url}/sport-wetten`,
+              url: eventUrl(brand.url, sport, region, comp, game),
               outcomes,
               fetchedAt,
             })
