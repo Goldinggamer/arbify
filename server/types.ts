@@ -1,11 +1,6 @@
 /**
- * Kanonisches Datenmodell.
- *
- * Der ganze Sinn dieser Datei: jeder Buchmacher benennt Märkte anders
- * ("Endergebnis" / "MRES" / "standard"). Bevor irgendetwas verglichen wird,
- * übersetzt jeder Adapter seine Quoten in exakt dieses Modell. Nur wenn zwei
- * Outcomes denselben `marketKey` und dieselbe `side` haben, dürfen sie
- * gegeneinander gerechnet werden.
+ * Kanonisches Datenmodell. Jeder Adapter übersetzt seine Märkte hierhin; nur
+ * Outcomes mit gleichem `marketKey` und gleicher `side` werden verglichen.
  */
 
 export type Sport =
@@ -19,15 +14,9 @@ export type Sport =
   | 'DARTS'
 
 /**
- * Anzeigename je Sportart — und zugleich das, was in `RawEvent.sport` steht.
- *
- * Die Zeichenkette ist **kein** Kosmetikum: der Sportfilter der Oberfläche
- * vergleicht sie zeichengenau (siehe `src/data/markets.ts`). Vorher schrieb
- * jeder Adapter sie selbst als Ternär-Kette hin (`sport === 'TENNIS' ?
- * 'Tennis' : 'Fußball'`). Bei zwei Sportarten ging das; bei acht ist ein
- * Tippfehler in einem von sechzehn Adaptern eine Sportart, die bei genau
- * diesem Buch unsichtbar bleibt — ohne Fehlermeldung, weil das Backend die
- * Partie ja liefert und nur der Filter sie wegwirft.
+ * Anzeigename je Sportart und zugleich der Wert von `RawEvent.sport`. Der
+ * Sportfilter der Oberfläche vergleicht ihn zeichengenau
+ * (`src/data/markets.ts`) — Adapter nehmen ihn deshalb immer von hier.
  */
 export const SPORT_LABEL: Record<Sport, string> = {
   FOOTBALL: 'Fußball',
@@ -44,15 +33,7 @@ const SPORT_BY_LABEL = new Map<string, Sport>(
   Object.entries(SPORT_LABEL).map(([k, v]) => [v, k as Sport]),
 )
 
-/**
- * Rückweg vom Anzeigenamen zur Modellkennung.
- *
- * `RawEvent.sport` trägt die Beschriftung, nicht die Kennung — historisch, weil
- * die Oberfläche sie direkt anzeigt. Alles, was serverseitig nach Sportart
- * unterscheidet (Gruppierung, Tiefenbudget, Warnungen), braucht den Rückweg.
- * `null` für Unbekanntes, damit ein Adapter mit Tippfehler nicht stillschweigend
- * als Fußball durchgeht.
- */
+/** Rückweg vom Anzeigenamen zur Kennung; `null` für Unbekanntes statt still Fußball. */
 export const sportFromLabel = (label: string): Sport | null => SPORT_BY_LABEL.get(label) ?? null
 
 /**
@@ -61,14 +42,7 @@ export const sportFromLabel = (label: string): Sport | null => SPORT_BY_LABEL.ge
  */
 export const sportOf = (label: string): Sport => sportFromLabel(label) ?? 'FOOTBALL'
 
-/**
- * Sportarten mit **einzelnen Sportlern** statt Mannschaften.
- *
- * Für sie gilt der Namensabgleich aus `server/players.ts`: Vereinsnamen werden
- * über Wortmengen verglichen, Personennamen über Nachname plus Initialen.
- * "van Gerwen M." und "Michael van Gerwen" teilen als Wortmengen nur zwei von
- * drei Wörtern und fielen sonst durch.
- */
+/** Einzelsportler statt Mannschaften: Namensabgleich über `server/players.ts` (Nachname plus Initialen). */
 export const INDIVIDUAL_SPORTS: ReadonlySet<Sport> = new Set<Sport>(['TENNIS', 'DARTS'])
 
 /** Sportarten, in denen eine Verlängerung die Wertung ändern kann. */
@@ -79,22 +53,10 @@ export const OVERTIME_SPORTS: ReadonlySet<Sport> = new Set<Sport>([
 ])
 
 /**
- * Spielabschnitt.
- *
- * `FT` heißt "die Partie, so wie sie gewertet wird" — im Fußball also 90
- * Minuten plus Nachspielzeit, im Basketball **einschließlich** Verlängerung.
- * `RT` ist der Gegenpart: ausdrücklich nur die reguläre Spielzeit.
- *
- * Warum das ein eigener Abschnitt sein muss und keine Fußnote: bei bwin steht
- * an derselben Partie „Gesamt (inkl. Verlängerung und Penalties) 6,5" **und**
- * „Drei Wege (Nur reguläre Spielzeit)". Das sind zwei verschiedene Wetten mit
- * derselben Linie. Fielen sie auf denselben Schlüssel, würde ein Über mit
- * Verlängerung gegen ein Unter ohne gerechnet — eine Arbitrage, die genau
- * dann verliert, wenn es in die Verlängerung geht.
- *
- * `H1`/`H2` sind Halbzeiten (Fußball, Basketball, Handball, American
- * Football), `Q1`…`Q4` Viertel (Basketball, American Football), `P1`…`P3`
- * Drittel (Eishockey), `S1`…`S5` Sätze (Tennis, Volleyball, Darts).
+ * Spielabschnitt. `FT` ist die Partie, wie sie gewertet wird (im Basketball
+ * mit Verlängerung), `RT` nur die reguläre Spielzeit — zwei verschiedene
+ * Wetten, die nie gegeneinander laufen dürfen. Dazu Halbzeiten `H`, Viertel
+ * `Q`, Drittel `P` und Sätze `S`.
  */
 export type Period =
   | 'FT'
@@ -115,22 +77,9 @@ export type Period =
   | 'S5'
 
 /**
- * Worin eine Linie zählt.
- *
- * Gesetzt wird sie **nur in Sportarten, die mehr als eine Einheit führen** —
- * sonst bleibt sie weg. Fußball, Basketball, Handball, Eishockey und American
- * Football haben je genau eine (Tore bzw. Punkte); dort wäre die Angabe
- * redundant, und jede redundante Angabe ist eine Stelle, an der ein Adapter
- * von den anderen abweichen kann.
- *
- * Zwingend ist sie dagegen bei:
- *   Tennis     — Satz-Handicap −1,5 und Spiele-Handicap −1,5 gleichzeitig,
- *                dazu Gesamtsätze 2,5 und Gesamtspiele 22,5
- *   Volleyball — Gesamtsätze 3,5 neben Gesamtpunkten 180,5
- *   Darts      — Gesamt-Legs 20,5 neben Gesamtsätzen 5,5
- *
- * Ohne Einheit fallen die Paare auf denselben Schlüssel, und dann wird ein
- * Satz-Über gegen ein Spiele-Unter gerechnet.
+ * Worin eine Linie zählt. Nur gesetzt in Sportarten mit mehr als einer
+ * Einheit (Tennis: Sätze/Spiele, Volleyball: Sätze/Punkte, Darts:
+ * Sätze/Legs) — sonst fielen etwa Satz- und Spiele-Handicap auf einen Schlüssel.
  */
 export type Unit = 'GAMES' | 'SETS' | 'POINTS' | 'LEGS'
 
@@ -154,11 +103,7 @@ export type MarketType =
 
 export type Side = 'HOME' | 'DRAW' | 'AWAY' | 'OVER' | 'UNDER' | 'YES' | 'NO' | 'ODD' | 'EVEN'
 
-/**
- * Welche Seiten ein Markt haben muss, damit er vollständig ist. Nur
- * vollständige Märkte kommen in die Arbitrage-Berechnung — sonst würde ein
- * fehlendes Bein als "besonders profitabel" durchgehen.
- */
+/** Seiten eines vollständigen Markts. Nur vollständige Märkte werden gerechnet — ein fehlendes Bein sähe sonst profitabel aus. */
 export const SIDES: Record<MarketType, Side[]> = {
   '1X2': ['HOME', 'DRAW', 'AWAY'],
   '2WAY': ['HOME', 'AWAY'],
@@ -181,20 +126,11 @@ export type CanonicalMarket = {
   line: number | null
   /** Nur bei TEAM_OU gesetzt: auf welches Team sich die Linie bezieht. */
   subject: 'HOME' | 'AWAY' | null
-  /**
-   * Worin die Linie zählt. Fehlt bei Fußball — dort sind es immer Tore.
-   * Siehe `Unit`.
-   */
+  /** Worin die Linie zählt — siehe `Unit`. */
   unit?: Unit
 }
 
-/**
- * Stabiler Schlüssel — identisch über alle Buchmacher hinweg.
- *
- * Die Einheit hängt nur dann hinten dran, wenn sie gesetzt ist. Damit bleiben
- * sämtliche Fußball-Schlüssel Zeichen für Zeichen dieselben wie zuvor, während
- * Tennis seine Satz- und Spiele-Märkte sauber auseinanderhält.
- */
+/** Stabiler Schlüssel über alle Buchmacher; die Einheit nur, wenn gesetzt. */
 export function marketKey(m: CanonicalMarket): string {
   const base = `${m.type}|${m.period}|${m.subject ?? '-'}|${m.line ?? '-'}`
   return m.unit ? `${base}|${m.unit}` : base
@@ -222,9 +158,6 @@ const AH_PREFIX: Record<Unit | 'NONE', string> = {
 /** " (1. HZ)" / " (2. Satz)" — leer für die ganze Partie. */
 function periodLabel(p: Period): string {
   if (p === 'FT') return ''
-  // Ohne diesen Zusatz sind die beiden Varianten in der Liste nicht zu
-  // unterscheiden: „Über/Unter 6.5" stünde zweimal da, einmal mit und einmal
-  // ohne Verlängerung, und der Nutzer träfe die Wahl blind.
   if (p === 'RT') return ' (reg. Spielzeit)'
   if (p === 'H1') return ' (1. HZ)'
   if (p === 'H2') return ' (2. HZ)'
@@ -248,16 +181,12 @@ export function marketLabel(m: CanonicalMarket, home: string, away: string): str
     case 'EH':
       return `Handicap ${m.line! > 0 ? '+' : ''}${m.line}${per}`
     case 'AH':
-      // Die Einheit gehört hier nach vorn: "Satz-Handicap −1.5" liest sich
-      // richtig, "Handicap −1.5 Sätze" klingt nach einer Linie in Sätzen, die
-      // auf etwas anderes angewendet wird.
+      // Einheit vorn: "Satz-Handicap −1.5".
       return `${AH_PREFIX[m.unit ?? 'NONE']}Handicap ${m.line! > 0 ? '+' : ''}${m.line}${per}`
     case 'TEAM_OU':
       return `${m.subject === 'HOME' ? home : away} Über/Unter ${m.line}${unit}${per}`
     case 'OE':
-      // Nicht "Tore": im Basketball sind es Punkte, im Darts Legs. Die
-      // Sportart steht an dieser Stelle nicht zur Verfügung, also bleibt die
-      // Beschriftung neutral.
+      // Neutral, weil die Sportart hier unbekannt ist (Tore, Punkte, Legs).
       return `Gesamtzahl gerade/ungerade${per}`
   }
 }
@@ -292,18 +221,9 @@ export type RawOutcome = {
   /** Dezimalquote */
   odds: number
   /**
-   * Beworbene Quote — Quotenboost, „SuperQuoten" und Ähnliches.
-   *
-   * Es ist **dieselbe** Wette wie der reguläre Markt, nur besser bepreist:
-   * bei Betano steht "Endergebnis SuperQuoten" (1,53 / 4,80 / 6,10) neben
-   * "Endergebnis" (1,52 / 4,60 / 5,80), jede Seite eine Spur höher. Deshalb
-   * gehört sie auf denselben Schlüssel und nicht in einen eigenen.
-   *
-   * Zwei Dinge hängen daran. Erstens ist eine Dopplung auf einer Seite hier
-   * **kein** Zuordnungsfehler, sondern erwartet — der Kollisionsmelder in
-   * `server/scan.ts` muss sie in Ruhe lassen. Zweitens sind solche Quoten in
-   * der Regel einsatzbegrenzt und nicht für jedes Konto verfügbar; der Fund
-   * bekommt deshalb den Hinweis `promo-odds`.
+   * Beworbene Quote („SuperQuoten“) — dieselbe Wette, derselbe Schlüssel.
+   * Eine Dopplung auf der Seite ist dann keine Kollision; der Fund bekommt
+   * `promo-odds`, weil solche Quoten meist einsatzbegrenzt sind.
    */
   promo?: boolean
 }

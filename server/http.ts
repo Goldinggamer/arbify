@@ -2,16 +2,11 @@ import { Impit } from 'impit'
 import { taped } from './tape.ts'
 
 /**
- * HTTP-Schicht für alle Adapter.
+ * HTTP-Schicht für alle Adapter: Ratenbegrenzung je Host, Timeout, Retry.
  *
- * Zwei Transporte, weil die Anbieter unterschiedlich streng sind:
- *  - `plain`  — normales fetch. Reicht z.B. für Tipico.
- *  - `impit`  — bildet Chromes TLS-Handshake (JA3/JA4) nach. Nötig überall
- *               dort, wo Cloudflare passiv den Fingerprint prüft und curl
- *               deshalb 403 bekommt, obwohl die Header stimmen (Betano).
- *
- * Ein echter Browser wird nirgends gestartet — das wäre um Größenordnungen
- * langsamer und würde bei ~24 Anbietern im Sekundentakt nicht skalieren.
+ *  - `plain` — normales fetch
+ *  - `impit` — bildet Chromes TLS-Handshake nach, wo Cloudflare den
+ *              Fingerprint prüft (Betano)
  */
 
 type Transport = 'plain' | 'impit'
@@ -21,10 +16,7 @@ const impit = new Impit({ browser: 'chrome' })
 const DEFAULT_HEADERS: Record<string, string> = {
   accept: 'application/json, text/plain, */*',
   'accept-language': 'de-DE,de;q=0.9,en;q=0.8',
-  // Tipico setzt auf seinen Datenendpunkten `cache-control: private, max-age=30`.
-  // Ohne diese Header riskieren wir, dass irgendwo auf dem Weg eine bis zu
-  // 30 Sekunden alte Antwort zurückkommt — bei Quoten, die Sekunden leben,
-  // ist das der Unterschied zwischen platzierbar und verpasst.
+  // Tipico setzt `max-age=30`; ohne no-cache droht eine 30 s alte Antwort.
   'cache-control': 'no-cache',
   pragma: 'no-cache',
 }
@@ -32,22 +24,10 @@ const DEFAULT_HEADERS: Record<string, string> = {
 /* --------------------------------------------------------- Host-Richtlinie */
 
 /**
- * Was ein Host verträgt — Mindestabstand und wie viele Anfragen gleichzeitig.
- *
- * Vorher stand das verstreut in den Adaptern: jeder gab sein `minIntervalMs`
- * mit, und wie viele Anfragen tatsächlich gleichzeitig liefen, ergab sich aus
- * der Poolgröße am Aufrufort. Unter Last war das nicht mehr steuerbar — die
- * Tiefenphase mehrerer Adapter überlappt, und ein Host sieht die Summe.
- * Sichtbar wurde das als schwankende Laufzeit statt als Fehler: Sportwetten.de
- * 15,3 s statt 1,8 s, Tipico nur 48 statt 60 vertiefte Partien, WettArena in
- * einem Lauf mit 0 Events.
- *
- * Deshalb entscheidet jetzt der Host, nicht der Aufrufer. Die Poolgrößen in
- * den Adaptern bleiben, verlieren aber ihre Wirkung als Ratenregler: sie
- * bestimmen nur noch, wie viele Aufgaben im Wartezimmer stehen.
- *
- * `minIntervalMs` ist eine **Untergrenze**. Gibt ein Adapter einen größeren
- * Wert mit, gilt seiner; ein kleinerer wird angehoben.
+ * Was ein Host verträgt. Die Rate bestimmt der Host, nicht der Aufrufer:
+ * mehrere Adapter auf einem Host teilen sich das Budget, und die Poolgrößen
+ * der Adapter bestimmen nur noch die Länge der Warteschlange. Das
+ * `minIntervalMs` eines Adapters wirkt nur nach oben.
  */
 type HostPolicy = {
   /** Mindestabstand zwischen zwei Anfragen an diesen Host (ms) */
@@ -58,23 +38,15 @@ type HostPolicy = {
 
 const DEFAULT_POLICY: HostPolicy = { minIntervalMs: 250, maxConcurrent: 4 }
 
-/**
- * Je Host die gemessene Belastungsgrenze.
- *
- * Die Werte stammen aus den Laufzeiten voller Durchläufe, nicht aus
- * Einzelmessungen: entscheidend ist, was der Host verträgt, während alle
- * anderen Adapter ebenfalls laufen.
- */
+/** Gemessen an vollen Durchläufen, in denen alle Adapter gleichzeitig laufen. */
 const HOST_POLICIES: Record<string, HostPolicy> = {
-  // Sequentielle Seitenabrufe, ~6 Seiten à 5,8 MB. Mehr als eine Anfrage
-  // gleichzeitig bringt nichts und provoziert nur die Abwehr.
+  // Wenige große Seiten (~5,8 MB); Parallelität provoziert nur die Abwehr.
   'eventservice.sportwetten.de': { minIntervalMs: 200, maxConcurrent: 1 },
   'www.sportwetten.de': { minIntervalMs: 300, maxConcurrent: 1 },
 
   'sports.tipico.de': { minIntervalMs: 100, maxConcurrent: 5 },
 
-  // WettArena hängt an einem Sitzungs-Cookie von der Startseite. Fällt das
-  // Aufwärmen aus, ist der ganze Sweep hin — deshalb wenig Gleichzeitigkeit.
+  // Hängt an einem Sitzungs-Cookie; fällt das Aufwärmen aus, ist der Sweep hin.
   'www.wettarena.de': { minIntervalMs: 120, maxConcurrent: 2 },
 
   // Entain: drei Marken auf derselben cds-api-Software, getrennte Hosts.
@@ -82,21 +54,7 @@ const HOST_POLICIES: Record<string, HostPolicy> = {
   'www.sportingbet.de': { minIntervalMs: 120, maxConcurrent: 4 },
   'www.oddset.de': { minIntervalMs: 120, maxConcurrent: 4 },
 
-  /**
-   * Betano braucht viele kleine Abrufe, und verträgt sie.
-   *
-   * Der Anbieter hat keinen Endpunkt über alle Ligen: `league/hot/upcoming`
-   * liefert je Aufruf nur eine „hot"-Auswahl von rund zwanzig Partien,
-   * unabhängig davon wie viele Liga-IDs man mitgibt. Nachgemessen: 182 IDs in
-   * einem Aufruf ergeben 6 Partien, 40 je Aufruf ergeben 99, und erst
-   * **einzeln** kommen alle 495 zusammen. Sammeln ist hier also keine Option.
-   *
-   * Verträglichkeit nachgemessen: 182 Einzelabrufe, null Fehler, null
-   * Abweisungen, null Wiederholungen. Bei 80 ms kostete das 14,8 s, wovon
-   * 90 s reine Drosselung über alle Anfragen waren — der Takt war die Bremse,
-   * nicht der Anbieter. 35 ms halten den Sweep bei rund 6 s und damit im
-   * Rahmen der übrigen Adapter, die parallel laufen.
-   */
+  // Betano braucht einen Abruf je Liga (~180) und verträgt sie ohne Abweisung.
   'www.betano.de': { minIntervalMs: 35, maxConcurrent: 8 },
   'eu-offering-api.kambicdn.com': { minIntervalMs: 100, maxConcurrent: 6 },
   // Winamax hat schon im Vier-Sekunden-Takt mit 403 geantwortet.
@@ -106,8 +64,7 @@ const HOST_POLICIES: Record<string, HostPolicy> = {
   'neobet.de': { minIntervalMs: 400, maxConcurrent: 2 },
   'www.888sport.de': { minIntervalMs: 400, maxConcurrent: 2 },
   'spectate-web.888sport.de': { minIntervalMs: 200, maxConcurrent: 4 },
-  // OpenBet-Köpfe werden mit `pooled(…, 40, …)` abgerufen; ohne Deckel wäre
-  // das der härteste Schub im ganzen Durchlauf.
+  // OpenBet ruft mit `pooled(…, 40, …)` ab — der Deckel fängt den Schub ab.
   'sb-pp-defe.daznbet.de': { minIntervalMs: 30, maxConcurrent: 12 },
 }
 
@@ -116,26 +73,14 @@ const policyFor = (host: string): HostPolicy => HOST_POLICIES[host] ?? DEFAULT_P
 /* -------------------------------------------------------------- Host-Staat */
 
 /**
- * Wie stark ein Host nach einer Abweisung gedrosselt wird.
- *
- * Eine 429 oder 403 ist die einzige belastbare Aussage darüber, dass die Rate
- * zu hoch war. Vorher wurde darauf nur mit Warten und Wiederholen reagiert —
- * die nächste Anfrage lief wieder im alten Takt und wurde wieder abgewiesen.
- * Der Multiplikator hält den ruhigeren Takt über den Einzelfall hinaus, so
- * dass der Rest des Durchlaufs durchkommt statt sein Budget zu verheizen.
+ * Nach einer 429/403 wird der Mindestabstand des Hosts vervielfacht, damit
+ * auch die folgenden Anfragen ruhiger laufen; nach Ruhe klingt es ab.
  */
 const PENALTY_START = 2
 const PENALTY_MAX = 8
 const PENALTY_COOLDOWN_MS = 30_000
 
-/**
- * Wie lange ein Host als „weist grundsätzlich ab" gilt.
- *
- * Vorher war das dauerhaft und wurde nur durch eine erfolgreiche Antwort
- * gelöscht — die es nicht mehr geben konnte, wenn jede Anfrage sofort scheitert.
- * Ein Sweep, der einmal in die Sperre lief, blieb damit für die restliche
- * Laufzeit des Prozesses bei 0 Events. Jetzt läuft die Markierung aus.
- */
+/** Wie lange ein Host als „weist grundsätzlich ab“ gilt — die Markierung muss auslaufen, sonst bleibt er für immer gesperrt. */
 const HARD_BLOCK_MS = 120_000
 
 type HostState = {
@@ -210,16 +155,9 @@ export function resetHttpStats(): void {
 }
 
 /**
- * Belegt den nächsten freien Zeitpunkt für `host` und liefert die Wartezeit.
- *
- * Entscheidend ist, dass Lesen und Schreiben ohne `await` dazwischen
- * passieren: JavaScript unterbricht diese Funktion nirgends, damit sieht jeder
- * weitere Aufrufer den bereits belegten Zeitpunkt und reiht sich dahinter ein.
- *
- * Vorher wurde erst gewartet und danach geschrieben. Alle gleichzeitigen
- * Aufrufer lasen so denselben Wert, schliefen bis zur selben Millisekunde und
- * feuerten zusammen los: der Abstand galt zwischen Schüben, nicht zwischen
- * Requests, und die tatsächliche Rate war um den Faktor der Poolgröße zu hoch.
+ * Belegt den nächsten freien Zeitpunkt und liefert die Wartezeit. Lesen und
+ * Schreiben ohne `await` dazwischen — sonst lesen gleichzeitige Aufrufer
+ * denselben Wert und feuern zusammen los.
  */
 function reserveSlot(st: HostState, minIntervalMs: number): number {
   const now = Date.now()
@@ -264,14 +202,8 @@ type FetchOptions = {
   minIntervalMs?: number
   timeoutMs?: number
   /**
-   * 403 als vorübergehende Bot-Abwehr behandeln und wiederholen (Standard).
-   *
-   * Gemessen an ~4.800 Requests über zehn volle Durchläufe: die 403 der Edges
-   * (CloudFront „Request blocked“, Cloudflare-Challenge) kommen im Schnitt in
-   * 43 ms zurück, erfolgreiche Antworten brauchen 116 ms. Es ist also eine
-   * Abweisung an der Kante, keine Aussage über die Anfrage — und beim nächsten
-   * Versuch geht dieselbe URL durch. Wer einen Endpunkt hat, der 403 dauerhaft
-   * meint, schaltet das ab und spart die Wartezeit.
+   * 403 als vorübergehende Abweisung an der Kante (CloudFront, Cloudflare)
+   * wiederholen — Standard. Abschalten, wo 403 dauerhaft gemeint ist.
    */
   retryOn403?: boolean
 }
@@ -290,15 +222,8 @@ class HttpError extends Error {
 }
 
 /**
- * Holt eine URL mit Rate-Limit pro Host, Timeout und Retry mit
- * exponentiellem Backoff.
- *
- * Wiederholt werden 5xx, 429 und — sofern nicht abgeschaltet — 403; alles
- * andere aus dem 4xx-Bereich ist ein Fehler auf unserer Seite und wird durch
- * Warten nicht besser. 429 und 403 kommen von der Abwehr davor und brauchen
- * deutlich mehr Ruhe als ein hakender Server: eigener Backoff, ein größeres
- * Versuchsbudget, und zusätzlich der Drosselungsfaktor auf dem Host, damit
- * die *nächsten* Anfragen nicht in dieselbe Wand laufen.
+ * Wiederholt werden 5xx, 429 und (abschaltbar) 403. Abweisungen der Abwehr
+ * bekommen längeren Backoff und mehr Versuche als ein hakender Server.
  */
 const BLOCKED_BACKOFF_MS = 1_200
 const SERVER_BACKOFF_MS = 400
@@ -306,15 +231,7 @@ const BLOCKED_BACKOFF_CAP_MS = 3_000
 const RETRIES = 2
 const BLOCKED_RETRIES = 4
 
-/**
- * Ab wie vielen Abweisungen je Host nicht mehr wiederholt wird.
- *
- * Die Wiederholung setzt darauf, dass die Sperre den Einzelfall betrifft. Wenn
- * ein Host in diesem Durchlauf schon reihenweise abweist, trifft diese Annahme
- * nicht mehr zu — dann kostet jede weitere Kette rund 13 Sekunden Backoff und
- * holt kein Event mehr. Gemessen an WettArena: erste Kette 19 s, danach
- * scheiterte ohnehin alles. Mit dieser Grenze zahlt nur die erste Kette.
- */
+/** Ab so vielen Abweisungen je Host im Durchlauf wird nicht mehr wiederholt — jede Kette kostet sonst ~13 s ohne Ertrag. */
 const BLOCK_GIVE_UP = 6
 
 export function fetchText(url: string, opts: FetchOptions = {}): Promise<string> {
@@ -408,13 +325,7 @@ export async function fetchJson<T = unknown>(url: string, opts: FetchOptions = {
   }
 }
 
-/**
- * Führt Aufgaben mit begrenzter Parallelität aus.
- *
- * Die Rate gegen einen Host bestimmt der Pool **nicht** — dafür sind
- * `HOST_POLICIES` und `minIntervalMs` zuständig. Der Pool muss nur groß genug
- * sein, um die Antwortzeit zu überdecken.
- */
+/** Führt Aufgaben mit begrenzter Parallelität aus. Die Rate gegen einen Host bestimmt `HOST_POLICIES`, nicht der Pool. */
 export async function pooled<T, R>(
   items: T[],
   limit: number,

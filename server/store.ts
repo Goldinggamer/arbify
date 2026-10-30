@@ -7,21 +7,9 @@ import type { RawEvent } from './types.ts'
 import { sportOf } from './types.ts'
 
 /**
- * Zwei Takte statt einem.
- *
- * Ein vollständiger Durchlauf über alle Anbieter dauert rund 13 Sekunden und
- * bewegt zweistellige Megabyte. Im Sekundentakt ist das weder machbar noch
- * nötig: von 500 Events stehen immer nur eine Handvoll kurz vor einer
- * Arbitrage. Also:
- *
- *   Discovery (≈60 s) — kompletter Sweep, Matching, Markttiefe. Findet neue
- *                       Events und hält das Universum aktuell.
- *   Refresh   (≈10 s) — lädt nur die "heißen" Vorspiel-Events nach: die,
- *                       deren beste Quoten nah an einer Arbitrage liegen.
- *                       Danach wird neu gerechnet.
- *
- * Wichtig für die Bedienung: läuft bereits ein Durchlauf, wartet ein
- * Aufrufer darauf — er bekommt **nie** den alten Stand zurückgereicht.
+ * Zwei Takte: Discovery (≈60 s) — kompletter Sweep, Matching, Markttiefe;
+ * Refresh (≈10 s) — lädt nur die „heißen“ Partien nach. Läuft bereits ein
+ * Durchlauf, wartet ein Aufrufer darauf, statt den alten Stand zu bekommen.
  */
 
 type ScanSnapshot = {
@@ -41,13 +29,7 @@ type ScanSnapshot = {
   droppedSources: number
   /** Wie viele Events im schnellen Takt beobachtet werden */
   hotCount: number
-  /**
-   * Was die Retry-Schleife im letzten Durchlauf verdeckt hat, je Host.
-   *
-   * Ohne diese Zahlen erscheint eine Ratenbegrenzung als längere Laufzeit und
-   * als schwankende Eventzahl — nie als Fehler. Genau dadurch schwankte die
-   * Vergleichsbasis zwischen 189 und 424 Partien, ohne dass etwas „kaputt" war.
-   */
+  /** Was die Retry-Schleife im letzten Durchlauf verdeckt hat, je Host. */
   hostLoad: Record<string, HostStats & { penalty: number; blockedUntil: string | null }>
   /** Zeitpunkt des letzten vollständigen Durchlaufs */
   lastDiscovery: string
@@ -127,13 +109,7 @@ function evaluate(config: ScanConfig, startedAt: string, t0: number, kind: 'disc
   return snapshot
 }
 
-/**
- * Events, die den schnellen Takt bekommen.
- *
- * Laufende Spiele bleiben außen vor: sie führen ohnehin zu keiner
- * ausgewiesenen Arbitrage mehr, und der knappe Refresh-Etat gehört den
- * Vorspiel-Partien, die kurz vor einer Arbitrage stehen.
- */
+/** Partien für den schnellen Takt — ohne laufende Spiele, die ohnehin nicht bewertet werden. */
 function hotSelection(matched: ReturnType<typeof matchEvents>['matched'], config: ScanConfig) {
   return matched
     .filter((m) => m.sources.length > 1 && !m.isLive)
@@ -147,26 +123,11 @@ function hotSelection(matched: ReturnType<typeof matchEvents>['matched'], config
 /* ----------------------------------------------------------- Tiefenbudget */
 
 /**
- * Verteilt das Tiefenbudget eines Buchmachers auf die Sportarten.
- *
- * Vorher wurde schlicht nach Anstoßzeit sortiert und global abgeschnitten.
- * Solange es nur Fußball gab, war das richtig: die Partie, die als nächstes
- * angepfiffen wird, ist die, die am ehesten spielbar ist. Mit einer zweiten
- * Sportart wird daraus ein Verdrängungswettbewerb — und zwar ein unfairer,
- * denn Tennis wird über den Tag verteilt angesetzt, Fußball geballt am Abend.
- * Gemessen bei bwin: die Tiefe fiel von 120 auf 55 vertiefte Partien, weil das
- * Budget vorne von Tennispartien aufgebraucht war. Das kostete Fußball-
- * Abdeckung, ohne dass irgendwo ein Fehler auftauchte.
- *
- * Die Aufteilung ist ein gleicher Grundanteil je Sportart, danach wandert der
- * Rest reihum an die Sportarten, die noch Kandidaten übrig haben. Damit
- * verschenkt eine kleine Sportart nichts: hat Tennis bei einem Buch nur 20
- * vergleichbare Partien, bekommt Fußball die übrigen 100 — und umgekehrt.
- *
- * Zurück kommt die Auswahl **reihum gemischt**, nicht nach Sportart geblockt.
- * Das ist kein Schönheitsfehler, sondern nötig: Winamax deckelt die Liste
- * intern noch einmal bei 60. Käme sie sortiert, bekäme dieser Adapter
- * ausschließlich die alphabetisch erste Sportart.
+ * Verteilt das Tiefenbudget eines Buchmachers auf die Sportarten: gleicher
+ * Grundanteil je Sportart, der Rest reihum an die, die noch Kandidaten haben.
+ * Sonst verdrängt das über den Tag verteilte Tennis den abends geballten
+ * Fußball. Zurück kommt die Auswahl reihum gemischt, weil manche Adapter die
+ * Liste noch einmal kappen (Winamax bei 60).
  */
 export function allocateDepth<T extends { sport: string; startTime: string }>(
   targets: T[],
@@ -180,8 +141,7 @@ export function allocateDepth<T extends { sport: string; startTime: string }>(
     if (list) list.push(t)
     else bySport.set(t.sport, [t])
   }
-  // Innerhalb einer Sportart bleibt es beim Anstoß: was zuerst angepfiffen
-  // wird, ist zuerst spielbar.
+  // Innerhalb einer Sportart nach Anstoß: was zuerst beginnt, ist zuerst spielbar.
   for (const list of bySport.values())
     list.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
 
@@ -226,22 +186,9 @@ export function allocateDepth<T extends { sport: string; startTime: string }>(
 /* --------------------------------------------------------------- Discovery */
 
 /**
- * Fehler, hinter denen eine abgerissene Dauerverbindung steckt.
- *
- * Drei Anbieter holen ihre Daten nicht über einzelne Abrufe, sondern über eine
- * offene Verbindung: VBET (Swarm), DAZN Bet (STOMP) und AdmiralBet (ASW). Die
- * überlebt nicht alles — schläft der Rechner ein, ist sie beim Aufwachen tot,
- * und dasselbe passiert bei jedem Netzwechsel. Gemessen an einem Vormittag
- * mit sechs Schlafphasen: jede einzelne kostete mindestens eines der drei
- * Bücher komplett, weil `sweep` bei einer Ausnahme `events: []` zurückgibt.
- *
- * Wiederholen hilft hier, anders als bei HTTP-Fehlern: die Transportklassen
- * bauen beim nächsten Aufruf von sich aus neu auf. Der zweite Versuch trifft
- * also eine frische Verbindung, nicht dieselbe kaputte.
- *
- * Bewusst breit — Abbruch, Zeitüberschreitung und abgelehnter Handschlag
- * gehören alle dazu. Ein zweiter Versuch kostet den Sweep eines Buches; ein
- * verlorenes Buch kostet jede Arbitrage, die über es gelaufen wäre.
+ * Fehler einer abgerissenen Dauerverbindung (VBET, DAZN Bet, AdmiralBet) —
+ * etwa nach Ruhezustand oder Netzwechsel. Bewusst breit: ein zweiter Versuch
+ * kostet einen Sweep, ein verlorenes Buch jede Arbitrage darüber.
  */
 const ABBRUCH =
   /geschlossen|Verbindungsfehler|Verbindungsaufbau|Handshake|Handschlag|nicht offen|keine Antwort|überschritten/i
@@ -250,15 +197,9 @@ export const istVerbindungsabbruch = (e: unknown): boolean =>
   e instanceof Error && ABBRUCH.test(e.message)
 
 /**
- * Führt einen Abruf aus und wiederholt ihn einmal, wenn die Dauerverbindung
- * abgerissen ist.
- *
- * Der zweite Versuch trifft eine **frische** Verbindung: die Transportklassen
- * räumen bei einem Abbruch auf und bauen beim nächsten Aufruf neu auf. Deshalb
- * lohnt Wiederholen hier, anders als bei einem inhaltlichen Fehler.
- *
- * Nur für `websocket`. Die HTTP-Adapter wiederholen bereits je Anfrage in
- * `fetchText` — dort wäre das eine Schleife um eine Schleife.
+ * Wiederholt einen Abruf einmal, wenn die Dauerverbindung abgerissen ist —
+ * der zweite Versuch baut eine frische auf. Nur für `websocket`; HTTP
+ * wiederholt schon je Anfrage in `fetchText`.
  */
 export async function versuchen<T>(
   adapter: BookmakerAdapter,
@@ -299,15 +240,13 @@ async function sweep(adapter: BookmakerAdapter, config: ScanConfig): Promise<Ada
 async function doDiscovery(config: ScanConfig): Promise<ScanSnapshot> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
-  // Die Telemetrie zählt je Durchlauf, nicht seit Prozessstart — sonst
-  // verwässert ein einzelner schlechter Lauf über die Stunden zur Unsichtbarkeit.
+  // Telemetrie je Durchlauf, damit ein schlechter Lauf nicht über Stunden verwässert.
   resetHttpStats()
 
   const books = await Promise.all(ADAPTERS.map((a) => sweep(a, config)))
   const shallow = books.flatMap((b) => b.events)
 
-  // Nur Events, die bei mindestens zwei Buchmachern existieren, können
-  // überhaupt eine Arbitrage ergeben — nur die lohnen die teure Markttiefe.
+  // Nur Partien bei mindestens zwei Büchern lohnen die teure Markttiefe.
   const preMatched = matchEvents(shallow).matched
   const worthwhile = new Set(
     preMatched
@@ -319,14 +258,8 @@ async function doDiscovery(config: ScanConfig): Promise<ScanSnapshot> {
     ADAPTERS.map(async (adapter, i) => {
       const book = books[i]
       if (!adapter.fetchDepth || book.error) return book
-      // Reihenfolge nach Anstoß, nicht nach Antwortreihenfolge des Anbieters.
-      // Bei einem Wochenfenster überschreitet die Zahl vergleichbarer Partien
-      // die Obergrenze regelmäßig; wer dann willkürlich abschneidet, verliert
-      // ausgerechnet die Partien, die als nächstes spielbar wären. Das Budget
-      // wird dabei je Sportart aufgeteilt — siehe `allocateDepth`.
-      // `depthSports` schließt Sportarten aus, bei denen der Detailabruf
-      // dieses Anbieters nichts hinzufügt — sonst verbrauchen sie Budget, das
-      // einer anderen Sportart echte Märkte gebracht hätte.
+      // Budget je Sportart und nach Anstoß (`allocateDepth`); `depthSports`
+      // schließt Sportarten aus, in denen die Tiefe nichts hinzufügt.
       const enriches = adapter.depthSports
       const targets = allocateDepth(
         book.events.filter(
@@ -346,11 +279,8 @@ async function doDiscovery(config: ScanConfig): Promise<ScanSnapshot> {
         )
         const byId = new Map(enriched.map((e) => [e.bookEventId, e]))
 
-        // Adapter geben bei einem Fehlschlag den Sweep-Stand zurück, damit ein
-        // hakendes Event nicht das ganze Buch kostet. Für die Zählung ist das
-        // aber kein Erfolg: vertieft ist nur, wo tatsächlich mehr Märkte
-        // ankamen als vorher. Sonst meldet die Diagnose 60 von 60, während in
-        // Wahrheit ein Drittel der Anfragen abgewiesen wurde.
+        // Vertieft zählt nur, wo mehr Märkte ankamen — bei Fehlschlag liefern
+        // Adapter den Sweep-Stand zurück.
         const before = new Map(targets.map((e) => [e.bookEventId, e.outcomes.length]))
         let gained = 0
         for (const e of enriched) if (e.outcomes.length > (before.get(e.bookEventId) ?? 0)) gained++
@@ -440,13 +370,7 @@ export function runRefresh(config: ScanConfig): Promise<ScanSnapshot> {
   return refreshInFlight
 }
 
-/**
- * Was der Aktualisieren-Knopf auslöst.
- *
- * Anders als früher wird hier nie der alte Stand zurückgegeben: läuft gerade
- * ein Durchlauf, wird er abgewartet und **danach** ein frischer gestartet.
- * Sonst hätte der Knopf sichtbar nichts getan.
- */
+/** Aktualisieren-Knopf: einen laufenden Durchlauf abwarten, dann einen frischen starten. */
 export async function forceRefresh(config: ScanConfig): Promise<ScanSnapshot> {
   if (discoveryInFlight) await discoveryInFlight
   else if (refreshInFlight) await refreshInFlight
