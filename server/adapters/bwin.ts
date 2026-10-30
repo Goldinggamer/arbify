@@ -7,20 +7,14 @@ import { lineFromText, num, oddEvenSide, simplify, teamSide, yesNoSide } from '.
 import { nameMatch } from '../players.ts'
 
 /**
- * bwin — Entains "cds-api".
+ * Entains „cds-api“ — bwin, Sportingbet, ODDSET.
  *
- * Die `x-bwin-accessid` ist eine statische, öffentliche Client-ID (base64
- * eines festen GUID), kein Zugangstoken. Dieselbe API bedient auch andere
- * Entain-Marken, u.a. Sportingbet — der Adapter ist deshalb über `brand`
- * parametrisiert.
- *
- * Der Unterschied zwischen den Stufen steckt allein in `offerMapping`:
- *   Filtered → rund 13 Märkte je Event, kompakt genug für den Sweep
- *   All      → rund 87 Märkte, aber 16,8 MB pro 100 Events
- * Deshalb läuft `All` nur über `fixture-view` für einzelne Events.
+ * Sweep mit `offerMapping=Filtered` (~13 Märkte je Partie), Tiefe einzeln
+ * über `fixture-view` mit `offerMapping=All` (~87 Märkte, aber 16,8 MB je 100
+ * Partien).
  */
 
-/** Entain-Sportkennungen: 4 ist Fußball, 5 ist Tennis. */
+/** Statische, öffentliche Client-ID, kein Zugangstoken. */
 const ACCESS_ID = 'NWQyNmIwMjUtZDQ3NC00NDQxLWI5YTktNjdkYjZjOTg1OWEz'
 const OPTS = { transport: 'impit' as const, minIntervalMs: 120 }
 const PAGE_SIZE = 100
@@ -44,24 +38,14 @@ type OptionMarket = {
   name: { value: string }
   options: Option[]
   attr?: string
-  /**
-   * Strukturierte Beschreibung des Markts — nur bei manchen Sportarten
-   * gefüllt, dann aber wesentlich verlässlicher als die Beschriftung.
-   * Volleyball liefert darüber `Happening=Set`, `MarketType=Over/Under` und
-   * `DecimalValue=3.5`, wo Basketball nur "Gesamtzahl" schreibt.
-   */
+  /** Strukturierte Beschreibung — nur bei manchen Sportarten (Volleyball), dann verlässlicher als der Name. */
   parameters?: { key?: string; value?: string }[]
 }
 
 /**
- * Ein Markt in der **Tennis**-Darstellung.
- *
- * Entain liefert Tennis nicht über `optionMarkets`, sondern über `games` —
- * eine andere Form mit `results` statt `options` und `odds` als blanker Zahl
- * statt `price.odds`. Gemessen: `optionMarkets` ist bei jeder Tennispartie
- * **leer**, auch mit `offerMapping=All` und ohne `offerCategories`-Filter.
- * Wer nur den Fußball-Zweig kennt, sieht dort schlicht nichts und hält den
- * Anbieter für tennislos.
+ * Markt in der Darstellung für Tennis und Mannschaftssportarten außer
+ * Fußball: `games` statt `optionMarkets` (dort leer), `results` statt
+ * `options`, `odds` als blanke Zahl.
  */
 type Game = {
   id?: number
@@ -78,7 +62,6 @@ type Fixture = {
   name: { value: string }
   startDate: string
   stage?: string
-  /** Sportart laut Antwort — der Adapter pflegt keine eigene Kennungsliste mehr. */
   sport?: { id?: number; name?: { value?: string } }
   participants?: { name: { value: string } }[]
   competition?: { name: { value: string } }
@@ -102,13 +85,11 @@ export function toMarket(m: OptionMarket, home: string, away: string, bookId: st
   const period = periodOf(raw)
   const firstOption = m.options?.[0]?.name?.value ?? ''
 
-  // Kombinationswetten ("Spielresultat und Gesamtanzahl Tore 2,5") enthalten
-  // die Namen echter Märkte und würden sonst als solche durchgehen. Sie sind
-  // Schnittmengen zweier Ereignisse und damit keine Zerlegung.
+  // Kombinationswetten ("Spielresultat und Gesamtanzahl Tore 2,5") sind
+  // Schnittmengen zweier Ereignisse, keine Zerlegung.
   if (/\bund\b/.test(name)) return null
 
-  // Restzeit-Märkte laufender Spiele: strukturell wie ein Ganzspielmarkt,
-  // inhaltlich etwas völlig anderes. Nicht vergleichbar.
+  // Restzeit-Märkte laufender Spiele meinen nur die verbleibende Spielzeit.
   if (/restzeit|restliche|rest der|ab jetzt|nächste[rs]?\s/.test(name)) return null
 
   if (
@@ -120,19 +101,15 @@ export function toMarket(m: OptionMarket, home: string, away: string, bookId: st
   )
     return { type: '1X2', period, line: null, subject: null }
 
-  // Exakt statt "enthält": bwin führt neben "Beide Teams treffen" (Ja 1,58)
-  // auch "Beide Teams treffen in beiden Hälften" (Ja 11,00). Eine lose
-  // Prüfung nimmt beide und rechnet sie gegeneinander — dabei kamen
-  // Renditen von angeblich 85 % heraus.
+  // Exakt, nicht „enthält“: „Beide Teams treffen in beiden Hälften“ ist eine
+  // andere Wette und ergab gegen die normale Form Scheinrenditen von 85 %.
   if (/^beide (teams|mannschaften) treffen( in der [12]\. hälfte)?$/.test(name))
     return { type: 'BTTS', period, line: null, subject: null }
 
   if (/^(gesamtanzahl tore )?(un)?gerade\/(un)?gerade( - [12]\. hälfte)?$/.test(name))
     return { type: 'OE', period, line: null, subject: null }
 
-  // Asiatische Handicaps haben andere Auszahlungsregeln (Einsatzrückgabe bei
-  // bestimmten Ergebnissen) und dürfen nicht mit dem europäischen Handicap
-  // in denselben Topf.
+  // Asiatische Handicaps erstatten bei bestimmten Ergebnissen — nicht ins europäische.
   if (name.includes('handicap') && !name.includes('asian') && !name.includes('asiatisch')) {
     const line = lineFromText(m.attr ?? raw)
     return line === null ? null : { type: 'EH', period, line, subject: null }
@@ -142,37 +119,26 @@ export function toMarket(m: OptionMarket, home: string, away: string, bookId: st
     const line = lineFromText(m.attr ?? '') ?? lineFromText(firstOption)
     if (line === null) return null
 
-    // "Velez Sarsfield - Gesamtanzahl Tore" ist ein Team-Total,
-    // "Gesamtanzahl Tore" das Gesamtergebnis. Werden die verwechselt,
-    // entstehen Vergleiche zwischen völlig verschiedenen Wetten — genau das
-    // erzeugt Phantom-Arbs mit absurden Renditen.
+    // "Velez Sarsfield - Gesamtanzahl Tore" ist ein Team-Total, ohne Präfix
+    // das Gesamtergebnis. Verwechselt ergibt das Phantom-Arbs.
     const rawPrefix = raw.split(' - ')[0] ?? ''
     const prefix = simplify(rawPrefix)
     const subject = teamSide(rawPrefix, home, away)
     if (subject) return { type: 'TEAM_OU', period, line, subject }
 
-    // Ein Präfix, das weder leer noch eines der beiden Teams ist, gehört zu
-    // einem Markt, den wir nicht kennen — verwerfen statt raten.
+    // Unbekanntes Präfix: verwerfen statt raten.
     const generic = ['gesamtanzahltore', 'gesamtzahldertore', '1halfte', '2halfte']
     if (prefix && !generic.includes(prefix)) {
-      // "Gesamtanzahl Tore (0-4+)" ist eine Intervallwette mit mehreren
-      // Spannen statt zwei Seiten — bekannt, ohne Gegenstück und deshalb
-      // stumm. Sie ist kein unklares Präfix, sondern ein anderer Markt.
+      // "Gesamtanzahl Tore (0-4+)" ist eine bekannte Intervallwette, kein unklares Präfix.
       if (!/\(\d+-\d+\+?\)/.test(raw)) noteUnmapped(bookId, `unklares Präfix :: ${raw}`)
       return null
     }
     return { type: 'OU', period, line, subject: null }
   }
 
-  // Bekannt und bewusst ausgeschlossen — ohne Warnung verwerfen.
-  //
-  // Doppelte Chance und "Unentschieden - Einsatz zurück" haben überlappende
-  // bzw. erstattete Optionen, genaues Ergebnis und Torschützen zu viele
-  // Seiten, "n. Tor" und "Hälfte mit den meisten Toren" einen anderen
-  // Gegenstand. Alle drei Entain-Marken liefern diese Märkte für praktisch
-  // jede Partie; ungefiltert stellen sie allein rund fünfzig Zeilen mit
-  // dreistelligen Zählern und verdrängen damit jede echte Lücke aus dem
-  // Bericht unter `/api/diagnostics`.
+  // Bekannt und bewusst ausgeschlossen (überlappende, erstattete oder
+  // vielseitige Märkte) — still verwerfen, sonst verdrängen sie echte Lücken
+  // aus `/api/diagnostics`.
   const known =
     /doppelte chance|einsatz zurück|genaues ergebnis|halbzeit ?[\/|oder] ?endstand|torschütze|spieler erzielt|^\d+\. tor$|hälfte mit den meisten toren|toren unterschied|einem tor unterschied|in beiden hälften|gewinnt beide hälften|gewinnt mind|qualifiziert sich|elfmeterschießen/.test(
       name,
@@ -208,12 +174,8 @@ function splitHandicapLabel(raw: string): { who: string; line: number | null } {
 }
 
 /**
- * Ordnet eine Auswahl einem der beiden Spieler zu.
- *
- * Die Schreibweisen unterscheiden sich **innerhalb derselben Antwort**: der
- * Siegermarkt kürzt ab ("A. Hernandez"), das Handicap schreibt aus und hängt
- * das Länderkürzel an ("Alex Hernandez (MEX) −1,5"). Ein Zeichenvergleich
- * scheitert daran, deshalb der Spielerabgleich aus `server/players.ts`.
+ * Ordnet eine Auswahl einem Spieler zu. Die Schreibweise wechselt in
+ * derselben Antwort ("A. Hernandez" / "Alex Hernandez (MEX) −1,5").
  */
 function playerSide(label: string, home: string, away: string): Side | null {
   const h = nameMatch(label, home)
@@ -223,12 +185,6 @@ function playerSide(label: string, home: string, away: string): Side | null {
   return null
 }
 
-/**
- * Tennis-Märkte aus `games`.
- *
- * Bewusst nach `templateId` **und** Beschriftung: die Kennung allein ist über
- * die Jahre nicht zugesagt, die Beschriftung allein zu schwammig.
- */
 function tennisOutcomes(f: Fixture, home: string, away: string, bookId: string): RawOutcome[] {
   const out: RawOutcome[] = []
 
@@ -252,7 +208,6 @@ function tennisOutcomes(f: Fixture, home: string, away: string, bookId: string):
       continue
     }
 
-    // "Sieger Satz 1" / "Sieger Satz 2" — Satzsieger, ebenfalls zweiseitig.
     const setWinner = /^sieger satz ([1-5])$/.exec(name)
     if (setWinner) {
       const market: CanonicalMarket = {
@@ -265,10 +220,8 @@ function tennisOutcomes(f: Fixture, home: string, away: string, bookId: string):
       continue
     }
 
-    // "Wer gewinnt das Match? (Satz-Handicap)". Es gibt **zwei** solche
-    // Märkte je Partie, einen mit Heim +1,5 und einen mit Heim −1,5. Die
-    // Linie steht nur in der Beschriftung, und maßgeblich ist die Heimsicht —
-    // wer die Linie der Gastseite nimmt, dreht das Vorzeichen.
+    // Satz-Handicap: zwei Märkte je Partie (Heim +1,5 und −1,5). Die Linie
+    // steht nur im Text und gilt aus Heimsicht.
     if (name.includes('satz-handicap')) {
       let line: number | null = null
       const parsed = results.map((r) => {
@@ -283,15 +236,8 @@ function tennisOutcomes(f: Fixture, home: string, away: string, bookId: string):
       continue
     }
 
-    // "Sätze im Match (Best-of-3)" mit den Auswahlmöglichkeiten "2 Sätze" und
-    // "3 Sätze". Im Best-of-3 ist das **exakt** Über/Unter 2,5 Sätze: mehr als
-    // zwei Sätze heißt drei, weniger heißt zwei, ein anderer Ausgang existiert
-    // nicht. Damit steht der Markt auf demselben Schlüssel wie die
-    // Gesamtsätze-Wette der übrigen Bücher.
-    //
-    // Die Verankerung auf "Best-of-3" ist keine Vorsicht, sondern notwendig:
-    // im Best-of-5 sind drei, vier und fünf Sätze möglich, und die Gleichung
-    // stimmt dann nicht mehr.
+    // "Sätze im Match (Best-of-3)": „2 Sätze“/„3 Sätze“ ist dort exakt
+    // Über/Unter 2,5 Sätze. Im Best-of-5 gilt das nicht.
     if (name.startsWith('sätze im match') && name.includes('best-of-3')) {
       const market: CanonicalMarket = { type: 'OU', period: 'FT', line: 2.5, subject: null, unit: 'SETS' }
       for (const r of results) {
@@ -302,10 +248,6 @@ function tennisOutcomes(f: Fixture, home: string, away: string, bookId: string):
       continue
     }
 
-    // Bekannt und bewusst draußen — ohne Warnung verwerfen. Die Satz-Wette ist
-    // ein genaues Ergebnis mit vier Seiten, "Sieg trotz Rückstand" und
-    // "Mindestens ein Satz" haben einen anderen Gegenstand, der Tie-Break
-    // ebenfalls.
     const known =
       /^satz-wette|^tie-?break|^mindestens ein satz|^sieg trotz|^sätze im match|genaues ergebnis|aufschlag|^ass|doppelfehler|spiele im match|^anzahl games/.test(
         name,
@@ -319,22 +261,9 @@ function tennisOutcomes(f: Fixture, home: string, away: string, bookId: string):
 /* -------------------------------------------- Basketball, Eishockey, u. a. */
 
 /**
- * Spielabschnitt aus der Beschriftung — inklusive der Verlängerungsfrage.
- *
- * Die Zuordnung folgt dem, was bwin an derselben Partie tatsächlich schreibt:
- *
- *   "Drei Wege (Nur reguläre Spielzeit)"                  → RT
- *   "3-Weg (reguläre Spielzeit)"                          → RT
- *   "Gesamt (inkl. Verlängerung und Penalties)"           → FT
- *   "Gesamtzahl"                                          → FT
- *
- * Die **reguläre** Spielzeit wird also ausdrücklich markiert, die Variante mit
- * Verlängerung meist gar nicht. Schweigen heißt darum FT. Wer es umgekehrt
- * annähme, würde die 3-Weg-Wette gegen die 2-Weg-Wette derselben Partie
- * rechnen — und die unterscheiden sich genau um die Verlängerung.
- *
- * Halbzeiten, Viertel und Drittel brauchen die Frage nicht: eine Verlängerung
- * liegt außerhalb von ihnen.
+ * Spielabschnitt aus der Beschriftung. bwin markiert die **reguläre**
+ * Spielzeit ausdrücklich ("Drei Wege (Nur reguläre Spielzeit)"), die Variante
+ * mit Verlängerung meist nicht — ohne Angabe gilt deshalb FT.
  */
 function courtPeriod(name: string): Period {
   const s = name.toLowerCase()
@@ -349,12 +278,8 @@ function courtPeriod(name: string): Period {
 }
 
 /**
- * Märkte der Mannschaftssportarten aus `games`.
- *
- * Basketball, Eishockey, American Football und Handball teilen sich bei Entain
- * dieselbe Beschriftungssprache, deshalb ein gemeinsamer Abbilder. Anders als
- * beim Fußball steht die Linie **je Markt** in `attr` — außer beim Handicap,
- * wo sie ausschließlich im Optionstext steht ("Minnesota Lynx -14,5").
+ * Märkte der Mannschaftssportarten außer Fußball. Die Linie steht je Markt
+ * in `attr`, beim Handicap nur im Optionstext ("Minnesota Lynx -14,5").
  */
 function courtOutcomes(
   f: Fixture,
@@ -369,16 +294,8 @@ function courtOutcomes(
     const raw = g.name?.value ?? ''
     const name = raw.toLowerCase()
 
-    // Kombinationswetten sind Schnittmengen zweier Ereignisse, keine
-    // Zerlegung eines einzelnen — "Siegwette und Gesamtscore" hat vier
-    // Ausgänge, nicht zwei.
-    //
-    // Geprüft wird **ohne Klammerinhalte**: der Fußball-Abbilder kann `\bund\b`
-    // blank auf den Namen anwenden, hier ginge das schief. "Handicap (inkl.
-    // Verlängerung und Penaltyschießen)" und "Gesamt (inkl. Verlängerung und
-    // Penalties)" sind echte Einzelmärkte, die das Wort nur im Zusatz führen —
-    // eine blanke Prüfung hätte ausgerechnet die Hauptmärkte des Eishockeys
-    // verworfen.
+    // Kombinationswetten raus — aber ohne Klammerinhalt prüfen: "Gesamt
+    // (inkl. Verlängerung und Penalties)" ist ein echter Einzelmarkt.
     if (/\bund\b/.test(name.replace(/\([^)]*\)/g, ' '))) continue
     const results = g.results ?? []
     const period = courtPeriod(raw)
@@ -388,30 +305,14 @@ function courtOutcomes(
       if (side && odds !== null && odds > 1) out.push({ market, side, odds })
     }
 
-    // "Wie viele Punkte werden im Spiel erzielt?" ist trotz des Namens keine
-    // Über/Unter-Wette, sondern eine Spannenwette ("131 bis 140"). Sie muss vor
-    // der Punktzahl-Prüfung raus, sonst wird ihre erste Spanne zur Linie.
+    // "Wie viele Punkte werden im Spiel erzielt?" ist eine Spannenwette, kein Über/Unter.
     if (/wie viele (punkte|tore).*(im spiel|erzielt\?$)/.test(name) && results.length > 2) continue
 
-    // 3-Weg — nur die reguläre Spielzeit kann unentschieden enden.
-    //
-    // Das `!handicap` ist der Kern: bwin führt an derselben Eishockeypartie
-    // "3-Weg (reguläre Spielzeit)" **und** "3-Weg Handicap (reguläre
-    // Spielzeit) -2/+2". Ohne den Ausschluss verschluckt dieses Muster das
-    // Handicap, wirft dessen Linie weg und legt es als schlichte Siegwette ab
-    // — 14,50 / 14,50 / 1,06 landet dann auf demselben Schlüssel wie
-    // 5,75 / 5,25 / 1,40. Das ist keine Ungenauigkeit, sondern eine andere
-    // Wette. Der Handicap-Zweig weiter unten erkennt das Unentschieden selbst
-    // und legt es korrekt als `EH` mit Linie ab.
+    // 3-Weg. Ohne `!handicap` würde "3-Weg Handicap -2/+2" als Siegwette
+    // ohne Linie abgelegt — eine andere Wette auf demselben Schlüssel.
     if (/^(drei wege|3-weg)/.test(name) && !/handicap|spread/.test(name)) {
-      // Der Abschnitt wird abgeleitet, nicht festgeschrieben. Hier stand hart
-      // `RT` — und bwin führt an derselben Partie "Drei Wege (Nur reguläre
-      // Spielzeit)" **und** "Drei Wege - (1. Halbzeit)". Beide landeten auf
-      // `1X2|RT`, also die Halbzeit auf dem Ganzspiel.
-      //
-      // Nur bei der ganzen Partie heißt drei Seiten „reguläre Spielzeit": ein
-      // Unentschieden kann es dort nur geben, solange nicht verlängert wurde.
-      // In einer Halbzeit oder einem Viertel ist das Remis der Normalfall.
+      // Abschnitt ableiten, nicht festschreiben ("Drei Wege - (1. Halbzeit)").
+      // Nur über die ganze Partie heißt drei Seiten „reguläre Spielzeit“.
       const p = courtPeriod(raw)
       const market: CanonicalMarket = {
         type: '1X2',
@@ -427,27 +328,19 @@ function courtOutcomes(
       continue
     }
 
-    // Siegwette, 2-Weg. Ohne Unentschieden **muss** sie die Verlängerung
-    // einschließen — sonst bliebe ein Ausgang unbezahlt.
-    // "Zwei Weg" ausgeschrieben ist bwins Schreibweise im Eishockey — die
-    // 2-Weg-Siegwette einschließlich Verlängerung und Penaltyschießen. Ohne
-    // sie fiel der Hauptmarkt dieser Sportart wortlos durch.
+    // Siegwette 2-Weg — schließt ohne Unentschieden die Verlängerung ein.
+    // "Zwei Weg" ist bwins Schreibweise im Eishockey.
     if (/siegwette|^2-weg|^zwei weg|^sieger$/.test(name) && !/spread|handicap/.test(name)) {
       const market: CanonicalMarket = { type: '2WAY', period, line: null, subject: null }
       for (const r of results) push(market, teamSide(r.name?.value ?? '', home, away), num(r.odds))
       continue
     }
 
-    // Handicap. Die Prüfung ist bewusst lose ("enthält"), weil bwin den
-    // Abschnitt mal voran- und mal nachstellt: "Spread", "1. Halbzeit
-    // Handicap", "1. Viertel Spread", "Handicap (inkl. Verlängerung …)". Eine
-    // verankerte Prüfung ließ das Halbzeit-Handicap durchfallen — 14 Märkte
-    // allein im ersten Messlauf.
+    // Handicap — bewusst „enthält“, weil der Abschnitt mal vor-, mal
+    // nachgestellt ist ("1. Viertel Spread", "Handicap (inkl. …)").
     if (/spread|handicap/.test(name)) {
-      // Drei Seiten mit Unentschieden heißt europäisches Handicap. Das kann es
-      // nur in der regulären Spielzeit geben, und es darf keinesfalls im
-      // selben Topf landen wie das zweiseitige: bei letzterem gibt es kein
-      // Remis, die Quoten sind deshalb systematisch niedriger.
+      // Mit Unentschieden ist es ein europäisches Handicap (nur reguläre
+      // Spielzeit) und darf nicht zum zweiseitigen.
       const draw = results.find((r) => /^(x|unentschieden|remis)$/i.test((r.name?.value ?? '').trim()))
       let line: number | null = null
       const parsed = results.map((r) => {
@@ -476,8 +369,7 @@ function courtOutcomes(
       continue
     }
 
-    // Gesamtzahl der Partie: "Gesamtzahl", "Gesamt der 1. Halbzeit",
-    // "Gesamt (inkl. Verlängerung und Penalties)".
+    // "Gesamtzahl", "Gesamt der 1. Halbzeit", "Gesamt (inkl. Verlängerung …)"
     if (/^gesamt(zahl|summe)?\b/.test(name)) {
       if (attrLine === null) continue
       const market: CanonicalMarket = { type: 'OU', period, line: attrLine, subject: null }
@@ -485,13 +377,8 @@ function courtOutcomes(
       continue
     }
 
-    // Team-Total: "Wie viele Punkte erzielt Minnesota Lynx?", "… wird Toronto
-    // Tempo erzielen?", "… erzielt Connecticut Sun in der 2. Hälfte?".
-    // Der Mannschaftsname steckt mitten im Satz; der Wortmengenvergleich stört
-    // sich an den Frageworten nicht, weil er durch die kleinere Menge teilt.
-    // Die englische Fassung ist kein Sonderfall, sondern kommt vermischt in
-    // derselben Antwort vor ("How many points will … score in the 1st half?")
-    // — bwin übersetzt einzelne Märkte nicht.
+    // Team-Total: "Wie viele Punkte erzielt Minnesota Lynx?" — auch englisch
+    // vermischt in derselben Antwort.
     if (/^wie viele (punkte|tore)|^how many (points|goals)/.test(name)) {
       if (attrLine === null) continue
       const subject = teamSide(raw, home, away)
@@ -504,8 +391,6 @@ function courtOutcomes(
       continue
     }
 
-    // Bekannt und bewusst draußen: Kombinationen, genaue Ergebnisse,
-    // Spielerwetten und Spannenwetten haben kein zweiseitiges Gegenstück.
     const known =
       /halbzeit ?[/|]? ?endstand|genaues ergebnis|doppelte chance|einsatz zurück|torschütze|spieler|^rennen zu|erreicht als erstes|beide teams|gewinnt (beide|mind)|siegt mit|differenz|margin|^wetten ohne|highest|niedrigste|verlängerung\?$|penaltyschießen\?$|^wird es|mit den meisten (punkten|toren)|^welches (viertel|drittel)/.test(
         name,
@@ -527,14 +412,9 @@ function overUnderSide(raw: string): Side | null {
 /* -------------------------------------------------------------- Volleyball */
 
 /**
- * Volleyball läuft über `optionMarkets` — mit **strukturierten** Parametern.
- *
- * Das ist der bequemste Fall im ganzen Adapter: statt aus "Gesamtzahl der
- * Sätze" auf die Einheit zu schließen, steht sie als `Happening=Set` da, die
- * Linie als `DecimalValue=3.5` und die Art als `MarketType=Over/Under`.
- *
- * Die Einheit ist hier keine Kosmetik: eine Partie führt Gesamtsätze 3,5 neben
- * Gesamtpunkten 180,5. Ohne `unit` fielen beide auf denselben Schlüssel.
+ * Volleyball liefert strukturierte Parameter (`Happening=Set`,
+ * `DecimalValue=3.5`, `MarketType=Over/Under`). Die Einheit ist nötig:
+ * Gesamtsätze 3,5 und Gesamtpunkte 180,5 stehen nebeneinander.
  */
 function volleyMarket(m: OptionMarket): CanonicalMarket | null {
   const p = new Map<string, string>()
@@ -542,12 +422,10 @@ function volleyMarket(m: OptionMarket): CanonicalMarket | null {
 
   const type = p.get('MarketType')
   if (!type) return null
-  // Sätze oder Punkte — beide Linien existieren nebeneinander.
   const unit: Unit | undefined =
     p.get('Happening') === 'Set' ? 'SETS' : p.get('Happening') === 'Point' ? 'POINTS' : undefined
   const period = p.get('Period') === 'FullTime' ? 'FT' : null
-  // Satzbezogene Abschnitte hat bwin hier noch nicht geliefert; alles außer
-  // der ganzen Partie bleibt deshalb draußen statt geraten zu werden.
+  // Satzabschnitte liefert bwin hier nicht; alles außer der ganzen Partie bleibt draußen.
   if (!period) return null
 
   if (type === '2way') return { type: '2WAY', period, line: null, subject: null }
@@ -563,12 +441,8 @@ function volleyMarket(m: OptionMarket): CanonicalMarket | null {
 }
 
 /**
- * Volleyball-Ausgänge.
- *
- * Beim Handicap wird die Linie **aus dem Optionstext** genommen ("Slowenien
- * (1,5)"), nicht aus `DecimalHandicap`: der Parameter nennt den Betrag, sagt
- * aber nicht, auf welche Seite er sich bezieht. Das Modell führt die Linie aus
- * Heimsicht, und die steht nur im Text.
+ * Beim Handicap kommt die Linie aus dem Optionstext ("Slowenien (1,5)"):
+ * `DecimalHandicap` nennt nur den Betrag, nicht die Seite.
  */
 function volleyOutcomes(f: Fixture, home: string, away: string, bookId: string): RawOutcome[] {
   const out: RawOutcome[] = []
@@ -615,27 +489,15 @@ function volleyOutcomes(f: Fixture, home: string, away: string, bookId: string):
 }
 
 /**
- * Ermittelt Heim- und Auswärtsteam.
- *
- * Achtung: `fixture-view` mit `offerMapping=All` liefert in `participants`
- * den kompletten Kader beider Mannschaften — dutzende Spielernamen, nicht
- * die zwei Teams. Nur wenn dort genau zwei Einträge stehen, sind es die
- * Teams; sonst ist der Fixture-Name ("Heim - Auswärts") die verlässliche
- * Quelle. Ein bekanntes Team-Paar aus dem Sweep hat immer Vorrang.
+ * Heim- und Auswärtsteam. `fixture-view` liefert in `participants` den
+ * ganzen Kader, deshalb nur bei genau zwei Einträgen verwenden, sonst den
+ * Namen ("Heim - Auswärts"). Ein bekanntes Paar aus dem Sweep geht vor.
  */
 function teamsOf(f: Fixture, known?: { home: string; away: string }): { home: string; away: string } | null {
   if (known) return known
 
-  // Die US-Ligen werden andersherum benannt: "Chicago Bears bei Carolina
-  // Panthers" heißt, dass Chicago **auswärts** spielt. `participants` folgt
-  // dieser Reihenfolge, steht also ebenfalls falsch herum. Gemessen an drei
-  // NFL-Partien: participants[0] ist durchgehend das zuerst genannte Team.
-  //
-  // Ohne diese Prüfung führte der Adapter jede NFL-Partie gedreht. Die
-  // Ausrichtung in `match.ts` fängt das zwar ab, solange ein anderes Buch
-  // widerspricht — aber sie fängt es über den Anker ab, und ist bwin der
-  // Anker, übernimmt der ganze Fund die falsche Seite. Die Quoten passen dann
-  // zwar zueinander, in der Liste steht aber das Auswärtsteam als Heim.
+  // US-Schreibweise "Chicago Bears bei Carolina Panthers": das erste Team
+  // spielt auswärts, auch in `participants`.
   const away0 = / bei | at | @ /.test(f.name?.value ?? '')
 
   const p = f.participants
@@ -671,8 +533,6 @@ function toRawEvent(
   } else if (sport === 'VOLLEYBALL') {
     outcomes.push(...volleyOutcomes(f, home, away, brand.id))
   } else if (sport !== 'FOOTBALL') {
-    // Basketball, Eishockey, American Football, Handball und Darts liefern
-    // ihre Märkte wie Tennis über `games`; `optionMarkets` ist dort leer.
     outcomes.push(...courtOutcomes(f, home, away, brand.id, sport))
   } else {
     for (const m of f.optionMarkets ?? []) {
@@ -698,9 +558,7 @@ function toRawEvent(
     away,
     startTime: new Date(f.startDate).toISOString(),
     isLive: f.stage === 'Live',
-    // Der Deeplink braucht die zusammengesetzte ID inklusive Präfix
-    // ("2:7835172"). Ohne das Präfix landet man auf der Startseite — und bei
-    // einer Arbitrage, die Sekunden lebt, ist Suchen von Hand keine Option.
+    // Die ID trägt ihr Präfix ("2:7835172"); ohne landet der Link auf der Startseite.
     url: `https://${brand.webHost}/de/sports/events/${f.id}`,
     outcomes,
     fetchedAt: new Date().toISOString(),
@@ -723,20 +581,9 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
       let skip = 0
       let total = Infinity
 
-      // **Ein** Durchlauf über das gesamte Angebot statt einer Abfrage je
-      // Sportart. Der Grund ist nicht Bequemlichkeit, sondern Vollständigkeit:
-      // die Sportkennungen sind nur dort zu messen, wo gerade Partien laufen.
-      // Handball hatte Ende Juli **keine einzige** — die Kennung wäre also
-      // geraten gewesen und hätte sich erst im September als richtig oder
-      // falsch gezeigt.
-      //
-      // bwin benennt seine Sportarten auf Deutsch exakt so, wie das Modell sie
-      // führt ("Fußball", "Eishockey", "American Football"), deshalb genügt
-      // `sportFromLabel`. Kommt Handball zurück, wird es ohne Codeänderung
-      // mitgenommen; kommt Schach, fällt es durch.
-      //
-      // Billiger ist es obendrein: acht Einzelabfragen kosteten vierzehn
-      // Seiten, der Gesamtdurchlauf neun (rund 860 Partien bei `take=100`).
+      // Ein Durchlauf über das ganze Angebot statt einer Abfrage je Sportart:
+      // keine geratenen Sportkennungen, und billiger (9 statt 14 Seiten). Die
+      // deutschen Sportnamen passen direkt auf `sportFromLabel`.
       while (skip < total && out.length < ctx.maxEvents) {
         const page = await fetchJson<{ fixtures?: Fixture[]; totalCount?: number }>(
           `${api}/fixtures?${q}&fixtureTypes=Standard&state=Latest&offerMapping=Filtered` +
@@ -767,8 +614,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
             `&state=Latest&useRegionalisedConfiguration=true&statisticsModes=None`,
           OPTS,
         )
-        // Teamnamen aus dem Sweep mitgeben — im Detailabruf sind sie
-        // unbrauchbar (siehe teamsOf).
+        // Teamnamen aus dem Sweep — im Detailabruf unbrauchbar (siehe teamsOf).
         const sport = sportOf(ev.sport)
         const deep = view.fixture
           ? toRawEvent(view.fixture, brand, { home: ev.home, away: ev.away }, sport)
@@ -787,11 +633,6 @@ export const bwin = makeAdapter({
   webHost: 'sports.bwin.de',
 })
 
-/**
- * Sportingbet und ODDSET laufen auf derselben Entain-Plattform. Beide
- * kosten je eine Zeile Konfiguration — kein neuer Adapter, kein neues
- * Markt-Mapping. Genau dafür ist die Plattform-Parametrisierung da.
- */
 export const oddset = makeAdapter({
   id: 'oddset',
   name: 'ODDSET',
@@ -802,11 +643,8 @@ export const oddset = makeAdapter({
 export const sportingbet = makeAdapter({
   id: 'sportingbet',
   name: 'Sportingbet',
-  // Wie bei bwin liegt die Daten-API auf `www`, die Oberfläche auf `sports`.
-  // Über `sports.sportingbet.de` läuft die cds-api in einen 30-Sekunden-
-  // Timeout — das hat den kompletten Refresh-Takt blockiert.
+  // Daten-API auf `www.`: über `sports.` läuft die cds-api in einen 30-s-Timeout.
   host: 'www.sportingbet.de',
-  // `sports.` war beim Test zeitweise gar nicht erreichbar; `www.` antwortet
-  // zuverlässig und nimmt dieselbe Event-URL an.
+  // `sports.` war zeitweise nicht erreichbar; `www.` nimmt dieselbe Event-URL an.
   webHost: 'www.sportingbet.de',
 })
