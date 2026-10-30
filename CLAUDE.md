@@ -37,7 +37,11 @@ Server env vars: `PORT`, `DISCOVERY_INTERVAL_MS`, `REFRESH_INTERVAL_MS`, `WINDOW
 
 **Pipeline:** adapters → `match.ts` → `scan.ts` → snapshot in `store.ts` → HTTP API in `server/index.ts` → frontend via `src/lib/api.ts`.
 
-- **Adapters (`server/adapters/`)** implement `BookmakerAdapter` (`types.ts`). There is one adapter per *platform*, not per brand: `bwin.ts` covers bwin, Sportingbet and ODDSET, and `kambi.ts` covers LeoVegas. `index.ts` is the registry of active adapters. An adapter's `id` must match `src/data/bookmakers.ts`.
+- **Adapters (`server/adapters/`)** implement `BookmakerAdapter` (`types.ts`). There is one adapter per *platform*, not per brand: `bwin.ts` covers bwin, Sportingbet and ODDSET, and `kambi.ts` covers LeoVegas. `index.ts` is the registry of active adapters. An adapter's `id` must match `src/data/bookmakers.ts`. Shared helpers:
+  - `labels.ts`: `num`, `lineFromText`, `halfOf`, `ouSideFromText`, `yesNoSide`, `oddEvenSide`, `teamSide`, `simplify`
+  - `depth.ts`: `deepen`, the common `fetchDepth` flow
+  - `types.ts`: `inWindow`, the time-window check
+  - Check these before writing another per-adapter copy. Some look-alikes are deliberately different: the `slug` functions follow each bookmaker's URL scheme, and Tipico's `parseLine` has to cope with values like "1:2.5".
 - **Two stages per adapter:** `fetchEvents` is the cheap sweep (all events, main markets only). The optional `fetchDepth` fetches the full markets, but only for events that at least two books offer. The depth budget is split per sport in `store.ts` (`allocateDepth`), and `depthSports` limits which sports get depth. If a depth fetch fails, the adapter returns the sweep state.
 - **Two scheduler cycles (`store.ts`):** discovery (default 60 s: full sweep, matching, depth) and refresh (default 10 s: re-fetches only "hot" events). `/api/scan` waits for any running scan and then starts a fresh one; it never returns a stale snapshot.
 - **Transports:**
