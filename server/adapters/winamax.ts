@@ -6,6 +6,7 @@ import { teamTokens, tokenSimilarity } from '../match.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { nameMatch } from '../players.ts'
+import { oddEvenSide, yesNoSide } from './labels.ts'
 
 /**
  * Winamax.
@@ -431,16 +432,8 @@ export function toSide(outcome: Outcome, market: CanonicalMarket, home = '', awa
     if (code === 'under' || label.startsWith('unter')) return 'UNDER'
     return null
   }
-  if (market.type === 'BTTS') {
-    if (label === 'ja') return 'YES'
-    if (label === 'nein') return 'NO'
-    return null
-  }
-  if (market.type === 'OE') {
-    if (label.startsWith('ungerade')) return 'ODD'
-    if (label.startsWith('gerade')) return 'EVEN'
-    return null
-  }
+  if (market.type === 'BTTS') return yesNoSide(label)
+  if (market.type === 'OE') return oddEvenSide(label)
   return null
 }
 

@@ -1,0 +1,58 @@
+import { teamTokens, tokenSimilarity } from '../match.ts'
+import type { Side } from '../types.ts'
+
+/** Zahl aus einem Feld oder einer Beschriftung, Dezimalkomma erlaubt. */
+export const num = (v: unknown): number | null => {
+  const n = Number(String(v ?? '').replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+/** Erste Zahl in einer Beschriftung ("Über 2,5" → 2.5). */
+export const lineFromText = (text: string): number | null => {
+  const m = text.match(/(-?\d+[.,]?\d*)/)
+  return m ? num(m[1]) : null
+}
+
+/** Normalisiert für Namensvergleiche: Kleinschreibung, Umlaute, Satzzeichen weg. */
+export const simplify = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/ä/g, 'a')
+    .replace(/ö/g, 'o')
+    .replace(/ü/g, 'u')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]/g, '')
+
+export const yesNoSide = (label: string): Side | null =>
+  label === 'ja' ? 'YES' : label === 'nein' ? 'NO' : null
+
+/** "ungerade" zuerst — "gerade" ist darin enthalten. */
+export const oddEvenSide = (label: string): Side | null =>
+  label.startsWith('ungerade') ? 'ODD' : label.startsWith('gerade') ? 'EVEN' : null
+
+/**
+ * Mindestähnlichkeit und Vorsprung vor der anderen Mannschaft. Der Vorsprung
+ * ist die eigentliche Sicherung: "Manchester" passt zu United und City gleich
+ * gut, und ein vertauschtes Team ist im Modell eine erfundene Wette.
+ */
+const TEAM_THRESHOLD = 0.5
+const TEAM_MARGIN = 0.25
+
+/**
+ * Ordnet einen Namen einer der beiden Mannschaften zu — über Wortmengen statt
+ * Zeichengleichheit, weil Bücher Exonyme ("Lech Posen" / "Lech Poznan") und
+ * Kurzformen ("Panthers" / "Florida Panthers") mischen.
+ */
+export function teamSide(label: string, home: string, away: string): 'HOME' | 'AWAY' | null {
+  const s = simplify(label)
+  if (!s) return null
+  if (s === simplify(home)) return 'HOME'
+  if (s === simplify(away)) return 'AWAY'
+  const tokens = teamTokens(label)
+  if (!tokens.length) return null
+  const h = tokenSimilarity(tokens, teamTokens(home))
+  const a = tokenSimilarity(tokens, teamTokens(away))
+  if (Math.max(h, a) < TEAM_THRESHOLD) return null
+  if (Math.abs(h - a) < TEAM_MARGIN) return null
+  return h > a ? 'HOME' : 'AWAY'
+}

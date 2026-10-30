@@ -2,6 +2,7 @@ import { fetchJson } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
 import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { num } from './labels.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 
 /**
@@ -73,11 +74,6 @@ type InsicResponse = {
   predictions?: Record<string, InsicPrediction>
   categories?: Record<string, { path?: string; label?: string }>
   pagination?: { registers?: number; offset?: number; rows?: number }
-}
-
-const num = (v: unknown): number | null => {
-  const n = Number(String(v ?? '').replace(',', '.'))
-  return Number.isFinite(n) ? n : null
 }
 
 /**

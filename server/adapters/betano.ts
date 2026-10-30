@@ -5,6 +5,7 @@ import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { readStateAfter } from './html-state.ts'
 import { nameMatch } from '../players.ts'
+import { lineFromText, num, oddEvenSide, simplify, yesNoSide } from './labels.ts'
 
 /**
  * Betano (Kaizen Gaming).
@@ -109,16 +110,6 @@ type BetanoEvent = {
   regionName?: string
   live?: boolean
   markets?: Market[]
-}
-
-const num = (v: unknown): number | null => {
-  const n = Number(String(v ?? '').replace(',', '.'))
-  return Number.isFinite(n) ? n : null
-}
-
-const lineFromText = (text: string): number | null => {
-  const m = text.match(/(-?\d+[.,]?\d*)/)
-  return m ? num(m[1]) : null
 }
 
 function periodOf(name: string, type: string): Period {
@@ -262,16 +253,6 @@ function toTennisFamily(m: Market): (MarketFamily & { unit?: 'GAMES' | 'SETS' })
   }
 }
 
-/** Normalisiert für Namensvergleiche: Kleinschreibung, Umlaute, Satzzeichen weg. */
-const simplify = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/ä/g, 'a')
-    .replace(/ö/g, 'o')
-    .replace(/ü/g, 'u')
-    .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]/g, '')
-
 function toSide(sel: Selection, market: CanonicalMarket, teams?: Teams): Side | null {
   const n = (sel.name ?? '').trim().toLowerCase()
 
@@ -310,16 +291,8 @@ function toSide(sel: Selection, market: CanonicalMarket, teams?: Teams): Side | 
     if (n.startsWith('unter') || n.startsWith('under') || n.startsWith('weniger')) return 'UNDER'
     return null
   }
-  if (market.type === 'BTTS') {
-    if (n === 'ja') return 'YES'
-    if (n === 'nein') return 'NO'
-    return null
-  }
-  if (market.type === 'OE') {
-    if (n.startsWith('ungerade')) return 'ODD'
-    if (n.startsWith('gerade')) return 'EVEN'
-    return null
-  }
+  if (market.type === 'BTTS') return yesNoSide(n)
+  if (market.type === 'OE') return oddEvenSide(n)
   return null
 }
 

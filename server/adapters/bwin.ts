@@ -3,7 +3,7 @@ import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit }
 import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
-import { teamTokens, tokenSimilarity } from '../match.ts'
+import { lineFromText, num, oddEvenSide, simplify, teamSide, yesNoSide } from './labels.ts'
 import { nameMatch } from '../players.ts'
 
 /**
@@ -89,75 +89,11 @@ type Fixture = {
   totalMarketsCount?: number
 }
 
-const num = (v: unknown): number | null => {
-  const n = Number(String(v ?? '').replace(',', '.'))
-  return Number.isFinite(n) ? n : null
-}
-
-const lineFrom = (text: string): number | null => {
-  const m = text.match(/(-?\d+[.,]?\d*)/)
-  return m ? num(m[1]) : null
-}
-
 function periodOf(name: string): Period {
   const s = name.toLowerCase()
   if (s.includes('1. hälfte') || s.includes('1. halbzeit')) return 'H1'
   if (s.includes('2. hälfte') || s.includes('2. halbzeit')) return 'H2'
   return 'FT'
-}
-
-/** Normalisiert für Vergleiche: Kleinschreibung, Umlaute, Satzzeichen weg. */
-const simplify = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/ä/g, 'a')
-    .replace(/ö/g, 'o')
-    .replace(/ü/g, 'u')
-    .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]/g, '')
-
-/**
- * Mindestähnlichkeit, damit ein Präfix als Mannschaftsname gilt, und der
- * Vorsprung, den der Treffer vor der anderen Mannschaft haben muss.
- *
- * Der Abstand ist die eigentliche Sicherung. Ein Präfix wie "Manchester" passt
- * zu "Manchester United" und "Manchester City" gleich gut — ohne
- * Abstandsforderung würde das Team-Total willkürlich einer der beiden Seiten
- * zugeschlagen, und ein vertauschtes Team ist im Modell dasselbe wie eine
- * erfundene Wette.
- */
-const SUBJECT_THRESHOLD = 0.5
-const SUBJECT_MARGIN = 0.25
-
-/**
- * Ordnet das Präfix eines Team-Totals einer der beiden Mannschaften zu.
- *
- * Der exakte Zeichenvergleich, der hier stand, verlor systematisch Märkte:
- * bwin schreibt im Marktnamen das **deutsche Exonym**, in der
- * Teilnehmerliste aber den Originalnamen — "Rapid Bukarest - Gesamtanzahl
- * Tore" gegen "Rapid Bucuresti 1923", "Lech Posen" gegen "Lech Poznan". Jede
- * dieser Partien verlor sämtliche Team-Totals beider Hälften, und zwar bei
- * allen drei Entain-Marken zugleich; in der Diagnose tauchten sie nur als
- * "unklares Präfix" auf. Betroffen ist jeder Verein mit gängigem deutschen
- * Namen (Warschau, Prag, Moskau, Kiew, Roter Stern Belgrad).
- *
- * Verglichen wird deshalb über Wortmengen — dasselbe Werkzeug, mit dem
- * `match.ts` schon die Partien selbst zusammenführt.
- */
-function subjectOf(prefix: string, home: string, away: string): 'HOME' | 'AWAY' | null {
-  const p = simplify(prefix)
-  if (!p) return null
-  // Exakte Schreibweise bleibt der schnelle Weg und der häufigste Fall.
-  if (p === simplify(home)) return 'HOME'
-  if (p === simplify(away)) return 'AWAY'
-
-  const tokens = teamTokens(prefix)
-  if (!tokens.length) return null
-  const h = tokenSimilarity(tokens, teamTokens(home))
-  const a = tokenSimilarity(tokens, teamTokens(away))
-  if (Math.max(h, a) < SUBJECT_THRESHOLD) return null
-  if (Math.abs(h - a) < SUBJECT_MARGIN) return null
-  return h > a ? 'HOME' : 'AWAY'
 }
 
 export function toMarket(m: OptionMarket, home: string, away: string, bookId: string): CanonicalMarket | null {
@@ -198,12 +134,12 @@ export function toMarket(m: OptionMarket, home: string, away: string, bookId: st
   // bestimmten Ergebnissen) und dürfen nicht mit dem europäischen Handicap
   // in denselben Topf.
   if (name.includes('handicap') && !name.includes('asian') && !name.includes('asiatisch')) {
-    const line = lineFrom(m.attr ?? raw)
+    const line = lineFromText(m.attr ?? raw)
     return line === null ? null : { type: 'EH', period, line, subject: null }
   }
 
   if (name.includes('gesamtanzahl tore') || name.includes('gesamtzahl der tore')) {
-    const line = lineFrom(m.attr ?? '') ?? lineFrom(firstOption)
+    const line = lineFromText(m.attr ?? '') ?? lineFromText(firstOption)
     if (line === null) return null
 
     // "Velez Sarsfield - Gesamtanzahl Tore" ist ein Team-Total,
@@ -212,7 +148,7 @@ export function toMarket(m: OptionMarket, home: string, away: string, bookId: st
     // erzeugt Phantom-Arbs mit absurden Renditen.
     const rawPrefix = raw.split(' - ')[0] ?? ''
     const prefix = simplify(rawPrefix)
-    const subject = subjectOf(rawPrefix, home, away)
+    const subject = teamSide(rawPrefix, home, away)
     if (subject) return { type: 'TEAM_OU', period, line, subject }
 
     // Ein Präfix, das weder leer noch eines der beiden Teams ist, gehört zu
@@ -256,21 +192,9 @@ function toSide(opt: Option, market: CanonicalMarket, home: string, away: string
     if (n === '2' || s === simplify(away)) return 'AWAY'
     return null
   }
-  if (market.type === 'OU' || market.type === 'TEAM_OU') {
-    if (n.startsWith('mehr als') || n.startsWith('über') || n.startsWith('over')) return 'OVER'
-    if (n.startsWith('weniger als') || n.startsWith('unter') || n.startsWith('under')) return 'UNDER'
-    return null
-  }
-  if (market.type === 'BTTS') {
-    if (n === 'ja') return 'YES'
-    if (n === 'nein') return 'NO'
-    return null
-  }
-  if (market.type === 'OE') {
-    if (n.startsWith('ungerade')) return 'ODD'
-    if (n.startsWith('gerade')) return 'EVEN'
-    return null
-  }
+  if (market.type === 'OU' || market.type === 'TEAM_OU') return overUnderSide(raw)
+  if (market.type === 'BTTS') return yesNoSide(n)
+  if (market.type === 'OE') return oddEvenSide(n)
   return null
 }
 
@@ -395,29 +319,6 @@ function tennisOutcomes(f: Fixture, home: string, away: string, bookId: string):
 /* -------------------------------------------- Basketball, Eishockey, u. a. */
 
 /**
- * Ordnet eine Auswahl einer der beiden Mannschaften zu.
- *
- * Nicht über Zeichengleichheit: bwin schreibt in der Siegwette die Kurzform
- * ("Panthers"), im Handicap den vollen Namen ("Florida Panthers"). Über
- * Wortmengen passt beides, und der geforderte Abstand verhindert, dass bei
- * "Los Angeles Lakers" gegen "Los Angeles Clippers" die gemeinsame Stadt
- * entscheidet.
- */
-function teamSide(label: string, home: string, away: string): Side | null {
-  const s = simplify(label)
-  if (!s) return null
-  if (s === simplify(home)) return 'HOME'
-  if (s === simplify(away)) return 'AWAY'
-  const tokens = teamTokens(label)
-  if (!tokens.length) return null
-  const h = tokenSimilarity(tokens, teamTokens(home))
-  const a = tokenSimilarity(tokens, teamTokens(away))
-  if (Math.max(h, a) < SUBJECT_THRESHOLD) return null
-  if (Math.abs(h - a) < SUBJECT_MARGIN) return null
-  return h > a ? 'HOME' : 'AWAY'
-}
-
-/**
  * Spielabschnitt aus der Beschriftung — inklusive der Verlängerungsfrage.
  *
  * Die Zuordnung folgt dem, was bwin an derselben Partie tatsächlich schreibt:
@@ -481,7 +382,7 @@ function courtOutcomes(
     if (/\bund\b/.test(name.replace(/\([^)]*\)/g, ' '))) continue
     const results = g.results ?? []
     const period = courtPeriod(raw)
-    const attrLine = lineFrom(g.attr ?? '')
+    const attrLine = lineFromText(g.attr ?? '')
 
     const push = (market: CanonicalMarket, side: Side | null, odds: number | null) => {
       if (side && odds !== null && odds > 1) out.push({ market, side, odds })
@@ -570,7 +471,7 @@ function courtOutcomes(
       const market: CanonicalMarket = { type: 'OE', period, line: null, subject: null }
       for (const r of results) {
         const label = (r.name?.value ?? '').trim().toLowerCase()
-        push(market, label.startsWith('ungerade') ? 'ODD' : label.startsWith('gerade') ? 'EVEN' : null, num(r.odds))
+        push(market, oddEvenSide(label), num(r.odds))
       }
       continue
     }

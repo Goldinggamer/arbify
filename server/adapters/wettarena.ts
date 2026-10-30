@@ -2,6 +2,7 @@ import { fetchJson, fetchText } from '../http.ts'
 import type { CanonicalMarket, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
 import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { num } from './labels.ts'
 
 /**
  * WettArena.
@@ -87,12 +88,6 @@ type Fixture = Record<string, unknown> & {
   AwayTeam?: string
   MatchDate?: string
   BetradarMatchId?: number
-}
-
-const num = (v: unknown): number | null => {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  const n = Number(String(v ?? '').replace(',', '.'))
-  return Number.isFinite(n) ? n : null
 }
 
 /**
