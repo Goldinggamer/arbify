@@ -55,17 +55,15 @@ const PAGES = [
  * "Spieler 1" / "Spieler 2" statt "Heim" / "Auswärts" — beides muss stimmen,
  * sonst kommt entweder kein Markt oder keine Seite zustande.
  */
-const SPORTS: { category: string; sport: Sport; label: string; market: CanonicalMarket }[] = [
+const SPORTS: { category: string; sport: Sport; market: CanonicalMarket }[] = [
   {
     category: 'soccer',
     sport: 'FOOTBALL',
-    label: 'Fußball',
     market: { type: '1X2', period: 'FT', line: null, subject: null },
   },
   {
     category: 'tennis',
     sport: 'TENNIS',
-    label: 'Tennis',
     market: { type: '2WAY', period: 'FT', line: null, subject: null },
   },
 ]

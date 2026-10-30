@@ -40,17 +40,15 @@ const SPORT_FOOTBALL = 10
  * **zweiseitig**: als `1X2` verbucht verlangte er über `SIDES` ein
  * Unentschieden, das es nie gibt, und wäre nie vollständig geworden.
  */
-const SPORTS: { id: number; sport: Sport; label: string; market: CanonicalMarket }[] = [
+const SPORTS: { id: number; sport: Sport; market: CanonicalMarket }[] = [
   {
     id: SPORT_FOOTBALL,
     sport: 'FOOTBALL',
-    label: 'Fußball',
     market: { type: '1X2', period: 'FT', line: null, subject: null },
   },
   {
     id: 11,
     sport: 'TENNIS',
-    label: 'Tennis',
     market: { type: '2WAY', period: 'FT', line: null, subject: null },
   },
 ]

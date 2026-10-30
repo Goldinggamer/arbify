@@ -1,6 +1,6 @@
 import { fetchJson, fetchText, pooled } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
-import { sportOf } from '../types.ts'
+import { SPORT_LABEL, sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { readStateAfter } from './html-state.ts'
@@ -52,7 +52,6 @@ const LEAGUE_TTL_MS = 30 * 60 * 1000
  */
 const SPORTS: {
   sport: Sport
-  label: string
   /** Übersichtsseite, aus deren Markup die Liga-IDs stammen. */
   page: string
   /** Muster im Markup, das die Liga-IDs trägt. */
@@ -61,14 +60,12 @@ const SPORTS: {
 }[] = [
   {
     sport: 'FOOTBALL',
-    label: 'Fußball',
     page: '/sport/fussball/',
     linkPattern: /\/sport\/fussball\/[a-z0-9-]+\/[a-z0-9-]+\/(\d+)\//g,
     events: (id) => `/api/league/hot/upcoming?leagueId=${id}&timeZoneId=Europe/Berlin&${REQ}`,
   },
   {
     sport: 'TENNIS',
-    label: 'Tennis',
     page: '/sport/tennis/',
     linkPattern: /\/sport\/tennis\/[a-z0-9-]+\/[a-z0-9-]+\/(\d+)\//g,
     events: (id) => `/api/sports/TENN/hot/trending/leagues/${id}/events?timeZoneId=Europe/Berlin&${REQ}`,
@@ -479,7 +476,7 @@ export const betano: BookmakerAdapter = {
           const ev = toRawEvent(
             e,
             toOutcomes(e, teams.length === 2 ? { home: teams[0].trim(), away: teams[1].trim() } : undefined, spec.sport),
-            spec.label,
+            SPORT_LABEL[spec.sport],
           )
           if (ev) out.push(ev)
         }

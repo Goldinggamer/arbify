@@ -66,12 +66,11 @@ const SHALLOW_TYPES = [
  * Basketball, 10000004 Baseball, 10000005 Eishockey, 10000006 Tennis) — sie
  * sind trotzdem einzeln nachgemessen, nicht fortgezählt.
  */
-const SPORTS: { category: string; sport: Sport; label: string; shallow: string[] }[] = [
-  { category: FOOTBALL, sport: 'FOOTBALL', label: 'Fußball', shallow: SHALLOW_TYPES },
+const SPORTS: { category: string; sport: Sport; shallow: string[] }[] = [
+  { category: FOOTBALL, sport: 'FOOTBALL', shallow: SHALLOW_TYPES },
   {
     category: 'asw:category:10000006',
     sport: 'TENNIS',
-    label: 'Tennis',
     // Ohne `marketTypes` im Aufruf expandiert das Gateway alles und läuft in
     // den Timeout — nachgemessen, schon bei acht Partien.
     shallow: ['asw:markettype:186', 'asw:markettype:314'],

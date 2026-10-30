@@ -56,9 +56,9 @@ const TZ = -120
 const SPORT_FOOTBALL = 1
 
 /** Sportkennungen laut `/API/Countries/{sport}/…`: 1 Fußball, 5 Tennis. */
-const SPORTS: { id: number; sport: Sport; label: string }[] = [
-  { id: SPORT_FOOTBALL, sport: 'FOOTBALL', label: 'Fußball' },
-  { id: 5, sport: 'TENNIS', label: 'Tennis' },
+const SPORTS: { id: number; sport: Sport }[] = [
+  { id: SPORT_FOOTBALL, sport: 'FOOTBALL' },
+  { id: 5, sport: 'TENNIS' },
 ]
 /**
  * Zeitfenster der API in Stunden — kommt jetzt vom Aufrufer.

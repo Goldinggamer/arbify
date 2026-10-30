@@ -221,17 +221,15 @@ function teamsOf(sels: SpSelection[], ev: SpEvent): { home: string; away: string
  * `1` und `2`, kein `X`. Als `1X2` verbucht verlangte er über `SIDES` ein
  * Unentschieden und wäre nie vollständig geworden.
  */
-const SPORTS: { slug: string; sport: Sport; label: string; market: CanonicalMarket }[] = [
+const SPORTS: { slug: string; sport: Sport; market: CanonicalMarket }[] = [
   {
     slug: 'football',
     sport: 'FOOTBALL',
-    label: 'Fußball',
     market: { type: '1X2', period: 'FT', line: null, subject: null },
   },
   {
     slug: 'tennis',
     sport: 'TENNIS',
-    label: 'Tennis',
     market: { type: '2WAY', period: 'FT', line: null, subject: null },
   },
 ]

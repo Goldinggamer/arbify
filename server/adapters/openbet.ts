@@ -53,9 +53,9 @@ const WEB = `https://${HOST}`
  * das liefert eine leere Antwort statt eines Fehlers und sähe damit aus wie
  * "keine Partien im Fenster".
  */
-const SPORTS: { coupon: string; sport: Sport; label: string }[] = [
-  { coupon: 'upcomingFBL', sport: 'FOOTBALL', label: 'Fußball' },
-  { coupon: 'upcomingTNS', sport: 'TENNIS', label: 'Tennis' },
+const SPORTS: { coupon: string; sport: Sport }[] = [
+  { coupon: 'upcomingFBL', sport: 'FOOTBALL' },
+  { coupon: 'upcomingTNS', sport: 'TENNIS' },
 ]
 
 const eventmapDoc = new LiveDocClient({ host: HOST, service: '/eventmaplivedocl1/livedoc' })
