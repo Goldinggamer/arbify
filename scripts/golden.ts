@@ -60,6 +60,13 @@ const sortKeys = (v: unknown): unknown =>
       ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys((v as Record<string, unknown>)[k])]))
       : v
 
+/**
+ * Diagnoselisten vollständig sortiert: bei gleicher Häufigkeit hängt ihre
+ * Reihenfolge sonst daran, welcher parallel laufende Adapter zuerst meldet.
+ */
+const sorted = <T>(list: T[]): T[] =>
+  list.map((x) => [JSON.stringify(sortKeys(x)), x] as const).sort(([a], [b]) => a.localeCompare(b)).map(([, x]) => x)
+
 const out = {
   books: snap.books.map(({ durationMs: _d, ...b }) => b),
   counts: {
@@ -76,9 +83,9 @@ const out = {
   ),
   opportunities: snap.opportunities,
   margins: snap.margins,
-  unmapped: unmappedReport(1_000_000),
-  collisions: collisionReport(1_000_000),
-  rejected: rejectedReport(),
+  unmapped: sorted(unmappedReport(1_000_000)),
+  collisions: sorted(collisionReport(1_000_000)),
+  rejected: sorted(rejectedReport()),
 }
 
 writeFileSync(outFile, JSON.stringify(sortKeys(out), null, 1) + '\n')
