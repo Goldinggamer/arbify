@@ -9,46 +9,23 @@ import { nameMatch } from '../players.ts'
 import { lineFromText, num, oddEvenSide, simplify, yesNoSide } from './labels.ts'
 
 /**
- * Betano (Kaizen Gaming).
+ * Betano (Kaizen Gaming). Cloudflare prüft den TLS-Fingerprint, deshalb
+ * durchgehend `impit`.
  *
- * Sitzt hinter Cloudflare, das den TLS-Fingerprint prüft: mit korrekten
- * Headern, aber curls ClientHello gibt es 403. Deshalb durchgehend `impit`.
- *
- * Betano hat keinen Endpunkt, der Events über alle Ligen hinweg liefert —
- * der Sweep geht deshalb Liga für Liga. Die Liga-IDs stehen als Links im
- * Markup der Fußball-Übersicht (182 Stück), und **jede** wird jeden Durchlauf
- * abgefragt: gemessen 495 Partien, 493 davon mit Sportradar-ID. Warum nicht
- * gesammelt und warum keine Rotation mehr, steht bei `fetchEvents`.
- *
- * Tiefe: die Event-Seite liefert ihre Marktdaten serverseitig ins HTML
- * gerendert mit (rund 13 Märkte) — es gibt dafür keinen JSON-Endpunkt.
+ * Sweep Liga für Liga: die Liga-IDs stehen als Links im Markup der
+ * Übersichtsseite. Tiefe: die Event-Seite rendert ihre Märkte ins HTML.
  */
 
 const HOST = 'https://www.betano.de'
 const REQ = 'req=s,stnf,c,mb'
-/**
- * Kein eigener Mindestabstand mehr.
- *
- * `minIntervalMs` ist beim Aufrufer eine **Untergrenze** — ein größerer Wert
- * hier hätte die Host-Richtlinie überstimmt. Mit den alten 80 ms kostete der
- * Sweep über alle Ligen 14,8 s, davon 90 s reine Drosselung über alle
- * Anfragen. Der Takt gehört nach `server/http.ts`, wo er neben den anderen
- * Anbietern steht und im Zusammenspiel gemessen wurde.
- */
+/** Kein eigener Mindestabstand — der Takt steht in `HOST_POLICIES` (`server/http.ts`). */
 const OPTS = { transport: 'impit' as const }
 
 const LEAGUE_TTL_MS = 30 * 60 * 1000
 
 /**
- * Sportarten samt Übersichtsseite und Event-Endpunkt.
- *
- * Für Tennis führt der Fußball-Weg ins Leere: `league/hot/upcoming` antwortet
- * dort mit `{"events":[]}` — kein Fehler, nur leer, und deshalb sah es lange
- * aus wie "Betano hat kein Tennis". Der richtige Pfad steht in der Antwort von
- * `/api/sports/TENN/hot/trending/leagues` als `url` an jeder Liga:
- * `/api/sports/TENN/hot/trending/leagues/{id}/events`. Der greift für **alle**
- * Liga-IDs aus dem Markup, nicht nur für die vier "trending" — nachgemessen 78
- * Partien über 32 Ligen, alle mit Sportradar-ID.
+ * Sportarten samt Übersichtsseite und Event-Endpunkt. Tennis braucht einen
+ * eigenen Pfad: `league/hot/upcoming` antwortet dort leer, ohne Fehler.
  */
 const SPORTS: {
   sport: Sport
@@ -85,13 +62,7 @@ type Market = {
   marketNotes?: string
 }
 
-/**
- * Ist das ein beworbener Markt (Quotenboost)?
- *
- * Gemessen an beiden Ausprägungen, die Betano führt: `MR12` („Endergebnis
- * SuperQuoten", Fußball) trägt **nur** den Hinweistext, `HTHP` („Sieger",
- * Tennis) zusätzlich `hasZeroRake`. Ein einzelnes Merkmal genügt also nicht.
- */
+/** Beworbener Markt (Quotenboost)? Je nach Markt trägt er das eine oder das andere Merkmal. */
 const istBoost = (m: Market): boolean =>
   m.hasZeroRake === true || /superquote/i.test(m.marketNotes ?? '')
 type Teams = { home: string; away: string }
@@ -118,15 +89,8 @@ function periodOf(name: string, type: string): Period {
 }
 
 /**
- * Ein Markt ohne Linie — die trägt bei Betano jede **Auswahl** selbst.
- *
- * Das ist die Eigenheit, an der die Tiefenstufe vorher scheiterte: Betano
- * bündelt sämtliche Torgrenzen in *einem* Marktobjekt. `HCTG` heißt
- * "Über/Unter Tore Gesamt", trägt `handicap: 0.5` — und darunter hängen
- * vierzehn Auswahlmöglichkeiten von "Über 0,5" bis "Unter 6,5", jede mit
- * ihrer eigenen `handicap`-Angabe. Wer die Linie am Markt abliest, schreibt
- * "Über 6,5" als "Über 0,5" in den Bestand. Deshalb liefert die Zuordnung
- * hier nur noch die Familie; die Linie kommt je Auswahl dazu.
+ * Marktfamilie ohne Linie: Betano bündelt alle Torgrenzen in einem Markt
+ * ("Über 0,5" bis "Unter 6,5"), die Linie trägt jede Auswahl selbst.
  */
 type MarketFamily = { type: CanonicalMarket['type']; period: Period; subject: CanonicalMarket['subject'] }
 
@@ -138,12 +102,7 @@ function toFamily(m: Market): MarketFamily | null {
   const type = (m.type ?? '').toUpperCase()
   const period = periodOf(m.name ?? '', m.type ?? '')
 
-  // Endergebnis / Halbzeitergebnis
-  // `MR12` ist die beworbene Fassung desselben Markts: "Endergebnis
-  // SuperQuoten" mit denselben drei Seiten und durchgehend höheren Quoten
-  // (1,53 / 4,80 / 6,10 gegen 1,52 / 4,60 / 5,80). Sie fehlte hier ganz —
-  // damit rechnete der Scanner bei jeder beworbenen Partie mit der
-  // schlechteren Quote.
+  // `MR12` ist die beworbene Fassung des Endergebnisses ("SuperQuoten").
   if (type === 'MRES' || type === 'MR12' || name.startsWith('endergebnis'))
     return { type: '1X2', period: 'FT', subject: null }
   if (type === 'H1RS' || name.includes('1. halbzeit - ergebnis'))
@@ -155,15 +114,11 @@ function toFamily(m: Market): MarketFamily | null {
   if (type === 'OEGL' || name.includes('ungerade/gerade') || name.includes('gerade/ungerade'))
     return { type: 'OE', period, subject: null }
 
-  // Team-Totals müssen VOR dem generischen OU-Zweig geprüft werden, sonst
-  // würden "Tore Heimteam" und "Tore gesamt" auf denselben Schlüssel fallen
-  // und völlig verschiedene Wetten gegeneinander gerechnet.
+  // Team-Totals vor dem allgemeinen Über/Unter.
   if (type === 'OUHG') return { type: 'TEAM_OU', period, subject: 'HOME' }
   if (type === 'OUAG') return { type: 'TEAM_OU', period, subject: 'AWAY' }
 
-  // Ausdrückliche Liste statt `type.startsWith('OU')`. Das Präfix war eine
-  // offene Flanke: Betano benennt auch Ecken- und Kartenmärkte nach demselben
-  // Muster, und ein `OUCR` wäre stillschweigend als Tor-Über/Unter durchgegangen.
+  // Ausdrückliche Liste statt Präfix `OU`: Ecken und Karten heißen nach demselben Muster.
   if (type === 'HCTG' || type === 'OVUN' || type === 'TOTG' || name.includes('gesamtzahl tore')) {
     const p: Period = type === 'OUH1' ? 'H1' : type === 'OUH2' ? 'H2' : period
     return { type: 'OU', period: p, subject: null }
@@ -173,21 +128,9 @@ function toFamily(m: Market): MarketFamily | null {
 
   if (type === 'EHND' || type === 'HAND') return { type: 'EH', period, subject: null }
 
-  // Bewusst nicht unterstützt, daher ohne Warnung: Doppelte Chance
-  // (überlappende Optionen), Halbzeit/Endstand, Genaues Ergebnis,
-  // Remis-Geld-zurück, Torschütze — sie passen nicht ins Zerlegungs-Modell.
-  //
-  // `FHMR` steht ausdrücklich dabei. Der Typ hieß hier früher "1. Halbzeit"
-  // und wurde als Halbzeit-Siegwette geführt — er heißt aber im Klartext
-  // "Handicap Spielergebnis" und ist das Ganzspiel-Handicap. Als Halbzeit-1X2
-  // verbucht wäre er eine Phantom-Arbitrage-Quelle ersten Ranges. Zugeordnet
-  // wird er trotzdem nicht: in keiner abgerufenen Partie trug er
-  // Auswahlmöglichkeiten, also ist weder das Vorzeichen der Linie noch die
-  // Benennung der Seiten nachgemessen. Raten ist hier teurer als auslassen.
-  // Neben den Kürzeln vergibt Betano für manche Märkte **numerische** Typen
-  // ("1001086 :: Genaues Ergebnis"). Derselbe Markt, andere Kennung — deshalb
-  // zusätzlich über den Klartextnamen abgleichen, sonst meldet die Diagnose
-  // eine Lücke, die keine ist.
+  // Bekannt und bewusst draußen. `FHMR` ist das Ganzspiel-Handicap, kam aber
+  // nie mit Auswahlmöglichkeiten — Vorzeichen und Seiten sind ungemessen.
+  // Manche Märkte tragen numerische Typen, deshalb auch über den Namen.
   const knownName =
     /genaues ergebnis|doppelte chance|halbzeit\/|halbzeit ?\/ ?endergebnis|geld zurück|torschütze|handicap spielergebnis|wird sich qualifizieren|qualifikationsmethode|gewinnmethode|wer gewinnt den pokal/.test(
       name,
@@ -197,31 +140,14 @@ function toFamily(m: Market): MarketFamily | null {
   return null
 }
 
-/**
- * Tennis-Marktfamilien.
- *
- * Die Typkürzel überschneiden sich nicht mit dem Fußball, ein eigener Zweig ist
- * trotzdem nötig: `TGHC` und `TGOU` zählen in **Spielen**, nicht in Toren, und
- * ohne Einheit im Schlüssel fiele ein Spiele-Handicap über −2,5 auf dasselbe
- * Fach wie ein Tore-Handicap über −2,5.
- */
+/** Tennis: `TGHC`/`TGOU` zählen in Spielen, deshalb mit Einheit. */
 function toTennisFamily(m: Market): (MarketFamily & { unit?: 'GAMES' | 'SETS' }) | null {
   const type = (m.type ?? '').toUpperCase()
   const name = m.name ?? ''
 
   switch (type) {
-    // "Sieger" — zweiseitig, die Seiten tragen die Spielernamen.
-    //
-    // `HTHP` ist die **beworbene** Fassung von `HTOH` — nachgemessen am
-    // Markt selbst: `hasZeroRake: true` und der Hinweistext "Märkte mit
-    // SuperQuoten werden bereits mit verbesserten Quoten angeboten". Beide
-    // heißen "Sieger", beide tragen `handicap=0`, und die beworbene liegt
-    // durchgehend höher (2,50/1,60 gegen 2,40/1,57), was die auffällig enge
-    // Marge von 2,5 % gegenüber 5,4 % erklärt.
-    //
-    // Also dieselbe Wette und derselbe Schlüssel. Der Unterschied steckt
-    // nicht im Gegenstand, sondern in den Bedingungen — beworbene Quoten sind
-    // meist einsatzbegrenzt. Das trägt der Hinweis `promo-odds`.
+    // "Sieger". `HTHP` ist die beworbene Fassung von `HTOH` — dieselbe Wette,
+    // derselbe Schlüssel; die Bedingungen trägt der Hinweis `promo-odds`.
     case 'HTOH':
     case 'HTHP':
       return { type: '2WAY', period: 'FT', subject: null }
@@ -239,14 +165,9 @@ function toTennisFamily(m: Market): (MarketFamily & { unit?: 'GAMES' | 'SETS' })
       return { type: 'OU', period: 'FT', subject: null, unit: 'GAMES' }
 
     default:
-      // Bekannt und bewusst draußen: `BTOF` ist die Satzwette (genaues
-      // Ergebnis, vier Seiten), `P1WS`/`P2WS` sind "gewinnt einen Satz" und
-      // haben einen anderen Gegenstand.
+      // Bekannt und bewusst draußen: Satzwette (`BTOF`) und "gewinnt einen Satz".
       if (!/^(BTOF|P[12]WS|CSFT|PSCR)$/.test(type) && !/satzwette|gewinnt einen satz|genaues ergebnis/i.test(name))
         noteUnmapped('betano', `TENNIS ${m.type} :: ${m.name}`)
-      // `HTHP` wird bewusst gemeldet statt stumm verworfen: sobald die
-      // Wertungsregel geklärt ist, gehört der Markt mit eigener Einheit und
-      // eigenem Schlüssel zurück ins Modell.
       return null
   }
 }
@@ -254,8 +175,7 @@ function toTennisFamily(m: Market): (MarketFamily & { unit?: 'GAMES' | 'SETS' })
 function toSide(sel: Selection, market: CanonicalMarket, teams?: Teams): Side | null {
   const n = (sel.name ?? '').trim().toLowerCase()
 
-  // Tennis: die Siegwette und das Spiele-Handicap beschriften ihre Seiten mit
-  // dem Spielernamen, teils mit angehängter Linie ("Cerundolo -2.5").
+  // Tennis: Seiten tragen den Spielernamen, teils mit Linie ("Cerundolo -2.5").
   if (market.type === '2WAY' || market.type === 'AH') {
     if (n === '1') return 'HOME'
     if (n === '2') return 'AWAY'
@@ -272,10 +192,7 @@ function toSide(sel: Selection, market: CanonicalMarket, teams?: Teams): Side | 
     if (n === '1') return 'HOME'
     if (n === 'x') return 'DRAW'
     if (n === '2') return 'AWAY'
-    // Das Endergebnis beschriftet seine Seiten mit "1"/"X"/"2", das
-    // **Halbzeitergebnis** dagegen mit den Mannschaftsnamen ("Lyngby BK" /
-    // "Unentschieden" / "Aarhus GF"). Ohne diesen Zweig fiel `H1RS` komplett
-    // durch: die Familie war zugeordnet, aber keine einzige Seite.
+    // Das Halbzeitergebnis beschriftet seine Seiten mit den Mannschaftsnamen.
     if (n === 'unentschieden' || n === 'remis') return 'DRAW'
     if (teams) {
       const s = simplify(sel.name ?? '')
@@ -295,12 +212,8 @@ function toSide(sel: Selection, market: CanonicalMarket, teams?: Teams): Side | 
 }
 
 /**
- * Linie einer einzelnen Auswahl.
- *
- * Reihenfolge ist wesentlich: die Angabe **an der Auswahl** hat Vorrang, denn
- * `market.handicap` trägt bei den gebündelten Märkten nur die erste Linie.
- * Erst wenn die Auswahl keine führt, gilt die des Marktes; die Beschriftung
- * ("Über 2,5") ist die letzte Rückfallebene.
+ * Linie einer Auswahl: zuerst ihre eigene, dann die des Markts (bei
+ * gebündelten Märkten nur die erste Linie), zuletzt die Beschriftung.
  */
 function lineOf(family: MarketFamily, sel: Selection, m: Market): number | null {
   if (!NEEDS_LINE.has(family.type)) return null
@@ -318,7 +231,6 @@ export function toOutcomes(ev: BetanoEvent, teams?: Teams, sport: Sport = 'FOOTB
       const odds = num(sel.price)
       if (odds === null || odds <= 1) continue
       const line = lineOf(family, sel, m)
-      // Ein Markt, der eine Linie braucht und keine hat, ist nicht vergleichbar.
       if (line === null && NEEDS_LINE.has(family.type)) continue
       const market: CanonicalMarket = { ...family, line }
       const side = toSide(sel, market, teams ?? teamsOf(ev))
@@ -387,21 +299,7 @@ function findEvent(node: unknown, id: string): BetanoEvent | null {
   return null
 }
 
-/**
- * Marker des Hydration-Payloads der Event-Seite.
- *
- * Vorher suchte diese Funktion die Zeichenkette `"markets"` und tastete sich
- * von dort mit `lastIndexOf('{"', anchor - 4000)` rückwärts zum Objektanfang.
- * Beide Kandidaten lagen systematisch daneben — `lastIndexOf` sucht ab dem
- * übergebenen Index nach **links**, landete also 4 kB *vor* dem Markt-Block
- * mitten in einem fremden Objekt (`{"url":…,"providerId":…}`, 79 Zeichen). Der
- * Schnitt parste zwar, enthielt aber keine Partie, `findEvent` gab null zurück,
- * und die Tiefenstufe lieferte für **jedes** Event eine leere Liste. Sichtbar
- * war das nur daran, dass Betano ausschließlich die Siegwette beisteuerte.
- *
- * Der Zustand hängt an einem eindeutigen Marker; den zu nehmen ist nicht nur
- * korrekt, sondern auch billiger als jede Rückwärtssuche.
- */
+/** Marker des Hydration-Payloads der Event-Seite. */
 const STATE_MARKER = 'window["initial_state"]='
 
 async function fetchEventMarkets(ev: RawEvent): Promise<RawOutcome[]> {
@@ -421,41 +319,14 @@ export const betano: BookmakerAdapter = {
   name: 'Betano',
   transport: 'impit',
 
-  // Tennis trägt bei Betano ausschließlich die Siegwette, und die steht schon
-  // im Sweep: `STWN` (Satz-Sieger) kam in jeder abgerufenen Partie mit null
-  // Auswahlmöglichkeiten, `TGHC`/`TGOU` erscheinen auf den Event-Seiten nicht.
-  // Die Tiefenabfrage gewinnt dort also nichts und nähme dem Fußball nur die
-  // Hälfte des Budgets weg.
+  // Tennis trägt nur die Siegwette, und die steht schon im Sweep — die Tiefe
+  // nähme dem Fußball nur Budget weg.
   depthSports: ['FOOTBALL'],
 
   async fetchEvents(ctx: AdapterContext): Promise<RawEvent[]> {
-
-    /**
-     * Alle Ligen, jeden Durchlauf.
-     *
-     * Vorher lief hier eine Rotation: die zuletzt produktiven Ligen immer, vom
-     * Rest je Durchlauf vierzig. Das hatte zwei Fehler, und beide kosteten
-     * fast das ganze Angebot.
-     *
-     * Der erste ist der Kaltstart. `productive` lebt im Prozess, nicht auf der
-     * Platte — nach jedem Neustart ist die Menge leer, und der erste Durchlauf
-     * fragt genau vierzig von 182 Ligen ab. Gemessen kamen dabei **15**
-     * Partien heraus, wo es 495 gibt. Bis sich das hochgearbeitet hat, dauert
-     * es fünf Discovery-Zyklen, also rund fünf Minuten.
-     *
-     * Der zweite ist ein undichter Zeiger. `coldCursor` indexiert in `cold`,
-     * und `cold` **schrumpft**, sobald Ligen produktiv werden. Nach dem ersten
-     * Durchlauf zeigt der Zeiger auf 40, das Array ist aber um die gefundenen
-     * Ligen kürzer — der Abschnitt dazwischen wurde übersprungen. Über viele
-     * Läufe wickelt sich das irgendwann ab, deckt aber nie zuverlässig alles.
-     *
-     * Sammeln wäre der naheliegende Ausweg und funktioniert nicht: der
-     * Endpunkt nimmt `leagueId=a,b,c` an, deckelt die **Antwort** aber bei rund
-     * zwanzig Partien — 182 IDs in einem Aufruf ergaben 6 Partien, 40 je
-     * Aufruf 99, einzeln alle 495. Einzelabrufe sind also der einzige
-     * vollständige Weg, und mit der Host-Richtlinie aus `server/http.ts`
-     * kosten sie rund 6 s. Die Adapter laufen parallel; das fällt nicht auf.
-     */
+    // Alle Ligen, jeden Durchlauf, einzeln: Sammelabfragen deckeln die
+    // Antwort bei rund zwanzig Partien, und eine Rotation verlor nach jedem
+    // Neustart fast das ganze Angebot.
     const cutoff = Date.now() + ctx.windowMs
     const out: RawEvent[] = []
 
