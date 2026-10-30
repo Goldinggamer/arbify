@@ -1,4 +1,5 @@
 import { Impit } from 'impit'
+import { taped } from './tape.ts'
 
 /**
  * HTTP-Schicht für alle Adapter.
@@ -316,7 +317,13 @@ const BLOCKED_RETRIES = 4
  */
 const BLOCK_GIVE_UP = 6
 
-export async function fetchText(url: string, opts: FetchOptions = {}): Promise<string> {
+export function fetchText(url: string, opts: FetchOptions = {}): Promise<string> {
+  // Kekse wechseln je Sitzung und gehören nicht zur Identität der Anfrage.
+  const { cookie: _cookie, ...headers } = opts.headers ?? {}
+  return taped(`http ${url} ${JSON.stringify(headers)}`, () => fetchLive(url, opts))
+}
+
+async function fetchLive(url: string, opts: FetchOptions): Promise<string> {
   const {
     transport = 'plain',
     minIntervalMs = 0,

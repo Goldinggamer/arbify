@@ -105,6 +105,8 @@ let discoveryInFlight: Promise<ScanSnapshot> | null = null
 let refreshInFlight: Promise<ScanSnapshot> | null = null
 
 export const getSnapshot = (): ScanSnapshot => snapshot
+/** Rohbestand des letzten Durchlaufs — für den Golden-Test. */
+export const getRawPool = (): RawEvent[] => rawPool
 
 /* ------------------------------------------------------------- Auswertung */
 

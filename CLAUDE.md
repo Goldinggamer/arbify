@@ -24,6 +24,13 @@ node scripts/check-links.ts   # check every adapter's deep links against the liv
 
 There is no linter. `npm run build` is the typecheck.
 
+**Golden test (proves a refactor didn't change behaviour):** `server/tape.ts` records and replays every network response at the transport API. `http.ts` `fetchText`, `ws.ts` `request`, `livedoc.ts` `document`, `aswgateway.ts` `request` (including the entity-store items) and Spectate's `getJson` all use it. It is switched on with `ARBIFY_TAPE_RECORD` / `ARBIFY_TAPE_REPLAY`.
+```bash
+node scripts/golden.ts record <tape.json>             # one live discovery run (~2 min, ~300 MB)
+node scripts/golden.ts replay <tape.json> <out.json>  # offline, frozen clock, ~7 s
+```
+Replay the same tape before and after a change; the outputs must be byte-identical unless the change is meant to alter behaviour. Tapes contain bookmaker data, so keep them out of the repo. A large tape may need `NODE_OPTIONS=--max-old-space-size=8192`.
+
 Server env vars: `PORT`, `DISCOVERY_INTERVAL_MS`, `REFRESH_INTERVAL_MS`, `WINDOW_HOURS`, `MAX_EVENTS`, `MIN_PERCENT`, `MAX_DEPTH_EVENTS`, `MAX_HOT_EVENTS`, `HOT_THRESHOLD`. Phone alert config is stored in `.arbify-alerts.json` (gitignored).
 
 ## Architecture

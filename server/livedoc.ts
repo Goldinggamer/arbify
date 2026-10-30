@@ -1,5 +1,6 @@
 import { gunzipSync, inflateRawSync, inflateSync } from 'node:zlib'
 import WebSocket from 'ws'
+import { taped } from './tape.ts'
 
 /**
  * Dritte Transportschicht: OpenBets „LiveDoc".
@@ -279,10 +280,15 @@ export class LiveDocClient {
    * Abonniert ein Dokument, gibt den ersten vollständigen Stand zurück und
    * bestellt wieder ab.
    */
-  async document<T = unknown>(
+  document<T = unknown>(
     destination: string,
     headers: Record<string, string | number | boolean> = {},
   ): Promise<T> {
+    const key = `livedoc ${this.opts.host}${this.opts.service} ${destination} ${JSON.stringify(headers)}`
+    return taped(key, () => this.documentLive<T>(destination, headers))
+  }
+
+  private async documentLive<T>(destination: string, headers: Record<string, string | number | boolean>): Promise<T> {
     await this.connect()
     const socket = this.socket
     if (socket?.readyState !== WebSocket.OPEN) throw new Error('LiveDoc: Verbindung nicht offen')

@@ -1,4 +1,5 @@
 import { Impit } from 'impit'
+import { taped } from '../tape.ts'
 import type { CanonicalMarket, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
 import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
@@ -165,7 +166,9 @@ async function ensureSession(): Promise<void> {
 }
 
 /** Holt einen Datenendpunkt; bei 4xx wird einmal neu angemeldet. */
-async function getJson<T>(path: string): Promise<T> {
+const getJson = <T>(path: string): Promise<T> => taped(`spectate ${path}`, () => getJsonLive<T>(path))
+
+async function getJsonLive<T>(path: string): Promise<T> {
   await ensureSession()
   let res = await impit.fetch(API + path, { headers: headers() })
   if (res.status >= 400 && res.status < 500) {

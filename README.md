@@ -33,6 +33,7 @@ npm run dev        # Scanner auf :8787, danach Oberfläche auf :5173
 | `npm test` | alle Tests, ohne Netz |
 | `node scripts/variance.ts` | drei volle Durchläufe, misst die Streuung |
 | `node scripts/check-links.ts` | prüft die Tiefenlinks gegen die echten Seiten |
+| `node scripts/golden.ts record\|replay …` | Golden-Test: Live-Lauf aufzeichnen, offline abspielen |
 
 Konfiguration über Umgebungsvariablen (Vorgabe in Klammern): `PORT` (8787),
 `DISCOVERY_INTERVAL_MS` (60000), `REFRESH_INTERVAL_MS` (10000), `WINDOW_HOURS`

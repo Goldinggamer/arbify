@@ -1,5 +1,6 @@
 import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import WebSocket from 'ws'
+import { taped, tapeMode } from './tape.ts'
 
 export type AswOptions = {
   url: string
@@ -34,6 +35,9 @@ export class AswGateway {
   private counter = 0
 
   readonly store = new Map<string, SnapshotItem>()
+  /** Beim Aufzeichnen: alle eingegangenen Entitäten, damit das Band den Speicher nachbauen kann. */
+  private log: SnapshotItem[] = []
+  private logMark = 0
 
   constructor(opts: AswOptions) {
     this.opts = {
@@ -140,13 +144,15 @@ export class AswGateway {
     return this.ready
   }
 
-  private absorb(p: any, onConfigured: () => void): void {
-    for (const item of p?.body?.snapshotUpdate?.snapshotUpdateItems ?? []) {
-      const urn = item?.entity?.urn
-      if (!urn) continue
-      this.store.delete(urn)
-      this.store.set(urn, item)
-    }
+  private put(item: SnapshotItem): void {
+    const urn = item?.entity?.urn
+    if (!urn) return
+    if (tapeMode === 'record') this.log.push(item)
+    this.store.delete(urn)
+    this.store.set(urn, item)
+  }
+
+  private trim(): void {
     if (this.store.size > this.opts.maxStoreSize) {
       const drop = this.store.size - this.opts.maxStoreSize
       let i = 0
@@ -155,6 +161,11 @@ export class AswGateway {
         this.store.delete(key)
       }
     }
+  }
+
+  private absorb(p: any, onConfigured: () => void): void {
+    for (const item of p?.body?.snapshotUpdate?.snapshotUpdateItems ?? []) this.put(item)
+    this.trim()
 
     if (p?.type === 'EnvironmentConfigured') return onConfigured()
 
@@ -190,7 +201,26 @@ export class AswGateway {
     }
   }
 
+  /**
+   * Die Antwort allein genügt nicht: die Inhalte kommen getrennt in den
+   * Speicher. Das Band hält deshalb zu jeder Antwort fest, was seit der
+   * vorigen Anfrage eingegangen ist, und spielt es vor der Antwort ein.
+   */
   async request<T = any>(type: string, body: Record<string, unknown>): Promise<T> {
+    const { response, items } = await taped(`asw ${this.opts.url} ${type} ${JSON.stringify(body)}`, async () => {
+      const response = await this.requestLive<T>(type, body)
+      const items = this.log.slice(this.logMark)
+      this.logMark = this.log.length
+      return { response, items }
+    })
+    if (tapeMode === 'replay') {
+      for (const item of items) this.put(item)
+      this.trim()
+    }
+    return response
+  }
+
+  private async requestLive<T>(type: string, body: Record<string, unknown>): Promise<T> {
     await this.connect()
     const socket = this.socket
     if (socket?.readyState !== WebSocket.OPEN) throw new Error('ASW: Verbindung nicht offen')

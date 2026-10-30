@@ -1,4 +1,5 @@
 import WebSocket from 'ws'
+import { taped } from './tape.ts'
 
 /**
  * Zweite Transportschicht: JSON-RPC über WebSocket.
@@ -181,7 +182,11 @@ export class RpcSocket {
   }
 
   /** Sendet eine Anfrage und wartet auf die Antwort mit derselben `rid`. */
-  async request<T = any>(payload: object): Promise<T> {
+  request<T = any>(payload: object): Promise<T> {
+    return taped(`ws ${this.opts.url} ${JSON.stringify(payload)}`, () => this.requestLive<T>(payload))
+  }
+
+  private async requestLive<T>(payload: object): Promise<T> {
     await this.connect()
     const socket = this.socket
     if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('Verbindung nicht offen')
