@@ -12,9 +12,11 @@ export function halfOf(label: string): Period | null {
   return null
 }
 
-/** Zahl aus einem Feld oder einer Beschriftung, Dezimalkomma erlaubt. */
+/** Zahl aus einem Feld oder einer Beschriftung, Dezimalkomma erlaubt. Fehlt der Wert: `null`, nicht 0. */
 export const num = (v: unknown): number | null => {
-  const n = Number(String(v ?? '').replace(',', '.'))
+  const s = String(v ?? '').trim()
+  if (!s) return null
+  const n = Number(s.replace(',', '.'))
   return Number.isFinite(n) ? n : null
 }
 
