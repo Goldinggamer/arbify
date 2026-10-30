@@ -7,7 +7,7 @@ import { noteUnmapped } from '../diagnostics.ts'
 import { readStateAfter } from './html-state.ts'
 import { deepen } from './depth.ts'
 import { nameMatch } from '../players.ts'
-import { halfOf, lineFromText, num, oddEvenSide, simplify, yesNoSide } from './labels.ts'
+import { halfOf, lineFromText, num, oddEvenSide, ouSideFromText, simplify, yesNoSide } from './labels.ts'
 
 /**
  * Betano (Kaizen Gaming). Cloudflare prüft den TLS-Fingerprint, deshalb
@@ -197,11 +197,7 @@ function toSide(sel: Selection, market: CanonicalMarket, teams?: Teams): Side | 
     }
     return null
   }
-  if (market.type === 'OU' || market.type === 'TEAM_OU') {
-    if (n.startsWith('über') || n.startsWith('over') || n.startsWith('mehr')) return 'OVER'
-    if (n.startsWith('unter') || n.startsWith('under') || n.startsWith('weniger')) return 'UNDER'
-    return null
-  }
+  if (market.type === 'OU' || market.type === 'TEAM_OU') return ouSideFromText(n)
   if (market.type === 'BTTS') return yesNoSide(n)
   if (market.type === 'OE') return oddEvenSide(n)
   return null

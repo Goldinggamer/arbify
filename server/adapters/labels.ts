@@ -36,6 +36,14 @@ export const simplify = (s: string) =>
     .replace(/ß/g, 'ss')
     .replace(/[^a-z0-9]/g, '')
 
+/** "Über 2,5" / "Mehr als 182,5" / "Under 3.5" → OVER / UNDER. */
+export function ouSideFromText(label: string): Side | null {
+  const n = label.trim().toLowerCase()
+  if (n.startsWith('über') || n.startsWith('over') || n.startsWith('mehr')) return 'OVER'
+  if (n.startsWith('unter') || n.startsWith('under') || n.startsWith('weniger')) return 'UNDER'
+  return null
+}
+
 export const yesNoSide = (label: string): Side | null =>
   label === 'ja' ? 'YES' : label === 'nein' ? 'NO' : null
 

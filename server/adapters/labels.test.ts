@@ -1,6 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { halfOf, num } from './labels.ts'
+import { halfOf, num, ouSideFromText } from './labels.ts'
+
+test('ouSideFromText: dieselben Schreibweisen für alle Adapter', () => {
+  // bwin verlangte „mehr als“, Betano nahm auch „mehr“ — jetzt einheitlich.
+  for (const s of ['Über 2,5', 'Over 2.5', 'Mehr als 182,5', 'Mehr 182,5', '  über 1.5']) assert.equal(ouSideFromText(s), 'OVER', s)
+  for (const s of ['Unter 2,5', 'Under 2.5', 'Weniger als 182,5', 'Weniger 182,5']) assert.equal(ouSideFromText(s), 'UNDER', s)
+  assert.equal(ouSideFromText('Ja'), null)
+})
 import { inWindow } from './types.ts'
 
 test('inWindow: eine unlesbare Anstoßzeit liegt nicht im Fenster', () => {

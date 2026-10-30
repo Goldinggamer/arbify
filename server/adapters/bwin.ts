@@ -4,7 +4,7 @@ import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel, sportOf } from '../types.
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { inWindow } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
-import { halfOf, lineFromText, num, oddEvenSide, simplify, teamSide, yesNoSide } from './labels.ts'
+import { halfOf, lineFromText, num, oddEvenSide, ouSideFromText, simplify, teamSide, yesNoSide } from './labels.ts'
 import { nameMatch } from '../players.ts'
 
 /**
@@ -154,7 +154,7 @@ function toSide(opt: Option, market: CanonicalMarket, home: string, away: string
     if (n === '2' || s === simplify(away)) return 'AWAY'
     return null
   }
-  if (market.type === 'OU' || market.type === 'TEAM_OU') return overUnderSide(raw)
+  if (market.type === 'OU' || market.type === 'TEAM_OU') return ouSideFromText(raw)
   if (market.type === 'BTTS') return yesNoSide(n)
   if (market.type === 'OE') return oddEvenSide(n)
   return null
@@ -369,7 +369,7 @@ function courtOutcomes(
     if (/^gesamt(zahl|summe)?\b/.test(name)) {
       if (attrLine === null) continue
       const market: CanonicalMarket = { type: 'OU', period, line: attrLine, subject: null }
-      for (const r of results) push(market, overUnderSide(r.name?.value ?? ''), num(r.odds))
+      for (const r of results) push(market, ouSideFromText(r.name?.value ?? ''), num(r.odds))
       continue
     }
 
@@ -383,7 +383,7 @@ function courtOutcomes(
         continue
       }
       const market: CanonicalMarket = { type: 'TEAM_OU', period, line: attrLine, subject }
-      for (const r of results) push(market, overUnderSide(r.name?.value ?? ''), num(r.odds))
+      for (const r of results) push(market, ouSideFromText(r.name?.value ?? ''), num(r.odds))
       continue
     }
 
@@ -395,14 +395,6 @@ function courtOutcomes(
   }
 
   return out
-}
-
-/** "Mehr als 182,5" / "Weniger als 182,5" → OVER / UNDER */
-function overUnderSide(raw: string): Side | null {
-  const n = raw.trim().toLowerCase()
-  if (n.startsWith('mehr als') || n.startsWith('über') || n.startsWith('over')) return 'OVER'
-  if (n.startsWith('weniger als') || n.startsWith('unter') || n.startsWith('under')) return 'UNDER'
-  return null
 }
 
 /* -------------------------------------------------------------- Volleyball */
@@ -476,7 +468,7 @@ function volleyOutcomes(f: Fixture, home: string, away: string, bookId: string):
       const odds = num(o.price?.odds)
       if (odds === null || odds <= 1) continue
       const label = o.name?.value ?? ''
-      const side = base.type === '2WAY' ? teamSide(label, home, away) : overUnderSide(label)
+      const side = base.type === '2WAY' ? teamSide(label, home, away) : ouSideFromText(label)
       if (side) out.push({ market: base, side, odds })
     }
   }
