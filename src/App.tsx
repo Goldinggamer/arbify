@@ -24,14 +24,7 @@ import { DetailPanel } from './components/DetailPanel'
 import { FilterOverlay } from './components/FilterOverlay'
 import { IconSort } from './components/icons'
 
-/**
- * Wie oft der aktuelle Stand vom Backend geholt wird.
- *
- * Der Scanner aktualisiert die heißen Quoten im Sekundentakt; das Frontend
- * muss entsprechend oft nachfragen, sonst zeigt es Quoten an, die es längst
- * frischer gäbe. Der Aufruf geht gegen den Speicher des Servers und kostet
- * die Buchmacher nichts.
- */
+/** Wie oft der Stand vom Backend geholt wird — liest nur den Speicher des Servers, kostet die Buchmacher nichts. */
 const POLL_MS = 2_000
 
 const DEFAULT_FILTERS: Filters = {
@@ -63,26 +56,13 @@ const DEFAULT_SETTINGS: Settings = {
 }
 
 /**
- * Version im Schlüssel, weil sich das Format mehrfach geändert hat: erst
- * standen in den Filtern Markt-Anzeigenamen statt Familien-IDs, dann fiel mit
- * den Einsatzlimits auch `respectLimits` weg. Ohne Bump würde ein alter Stand
- * aus dem Browser Einstellungen wiederherstellen, die es nicht mehr gibt.
- *
- * v4 kam mit Tennis. Der Grund ist hier nicht ein weggefallenes Feld, sondern
- * ein **hinzugekommenes**: ein gespeicherter Stand führt in `markets` nur die
- * damals bekannten Familien, also weder `2WAY` noch `AH`. Tennis wäre für
- * jeden bestehenden Nutzer unsichtbar geblieben — und zwar ohne Hinweis, denn
- * der Marktfilter hätte völlig unauffällig ausgesehen.
+ * Version im Schlüssel: bei Formatänderungen (zuletzt neue Marktfamilien mit
+ * Tennis) würde ein alter Stand sonst Einstellungen wiederherstellen, die
+ * Neues unsichtbar wegfiltern.
  */
 const STORAGE_KEY = 'arbify.state.v4'
 
-/**
- * Eigener Schlüssel für die Zugangsdaten des Meldedienstes.
- *
- * Getrennt vom übrigen Zustand, weil hier ein Geheimnis liegt: das
- * ntfy-Thema. Wer es löschen will, soll das können, ohne Bankroll und Filter
- * mit zu verlieren — und `Zurücksetzen` in der Oberfläche fasst es nicht an.
- */
+/** Eigener Schlüssel für die Zugangsdaten des Meldedienstes — ein Geheimnis, das `Zurücksetzen` nicht anfasst. */
 const PUSH_KEY = 'arbify.push.v1'
 
 /** Liest einen JSON-Wert aus localStorage; fehlt er oder ist er kaputt: `undefined`. */
@@ -111,16 +91,9 @@ function loadStored<T extends object>(key: string, fallback: T): T {
 }
 
 /**
- * Welche Sportarten der gespeicherte Stand kannte.
- *
- * Ohne diese Angabe ist eine neu hinzugekommene Sportart von einer bewusst
- * abgewählten nicht zu unterscheiden — und dann bleibt sie für jeden
- * bestehenden Nutzer stumm weggefiltert. Genau das passierte beim Sprung von
- * zwei auf acht Sportarten: der Filter zeigte "2/8 ausgewählt", Basketball war
- * angebunden und lieferte Daten, und niemand hätte je etwas davon gesehen.
- *
- * Fehlt das Feld, stammt der Stand aus der Zeit vor den neuen Sportarten — und
- * damals gab es nur diese beiden.
+ * Welche Sportarten der gespeicherte Stand kannte. Nur so ist eine neue
+ * Sportart von einer bewusst abgewählten zu unterscheiden; fehlt das Feld,
+ * stammt der Stand aus der Zeit mit Fußball und Tennis.
  */
 const SPORTS_BEFORE = ['Fußball', 'Tennis']
 
@@ -243,15 +216,8 @@ export default function App() {
   )
 
   /**
-   * Meldung bei Funden über der Schwelle.
-   *
-   * Hängt an `results`, also an der **gefilterten** Liste: gemeldet wird nur,
-   * was der Nutzer auch sehen würde. Sonst klingelt es wegen eines Buchmachers,
-   * den er abgewählt hat.
-   *
-   * Und nur bei echten Daten. Ist das Backend nicht erreichbar, füllt der
-   * Demo-Generator die Liste mit gewürfelten Arbitragen — die würden im
-   * Zwei-Sekunden-Takt Lärm machen und nichts bedeuten.
+   * Meldung bei Funden über der Schwelle — nur aus der gefilterten Liste und
+   * nur bei echten Daten, nicht bei Demo-Daten.
    */
   const alerted = useRef<Set<string>>(new Set())
   useEffect(() => {
@@ -275,17 +241,9 @@ export default function App() {
   }, [results, status?.online, settings.alertMinPercent, settings.alertSound, settings.alertDesktop])
 
   /**
-   * Filter und Einstellungen zum Server spiegeln.
-   *
-   * Damit meldet der Server aufs Telefon genau das, was hier auf dem Bildschirm
-   * stünde — dieselbe `applyFilters` läuft dort noch einmal. Ohne diese
-   * Spiegelung müsste der Server einen eigenen Filter führen, und zwei
-   * Implementierungen driften auseinander: dann meldet das Telefon Funde, die
-   * in der Liste gar nicht auftauchen, und man kann der Meldung nicht mehr
-   * trauen.
-   *
-   * Entprellt, weil an den Schiebereglern jeder Pixel ein neues `filters`-
-   * Objekt erzeugt — ungebremst wären das dutzende Anfragen je Handgriff.
+   * Filter und Einstellungen zum Server spiegeln, damit die Telefonmeldung
+   * dasselbe `applyFilters` nutzt. Entprellt, weil Schieberegler bei jedem
+   * Pixel ein neues `filters` erzeugen.
    */
   useEffect(() => {
     if (!synced) return
@@ -426,12 +384,8 @@ export default function App() {
 }
 
 /**
- * Leerer Zustand.
- *
- * Bei nur drei angebundenen Buchmachern ist "keine Arbitrage" der Normalfall
- * — die Marge der Bücher liegt bei 5–8 %. Statt einer leeren Fläche werden
- * deshalb die knappsten Markt-Vergleiche gezeigt: sie belegen, dass Matching
- * und Quotenvergleich laufen, und machen sichtbar, wie weit es noch ist.
+ * Leerer Zustand. Keine Arbitrage ist der Normalfall; gezeigt werden dann
+ * die knappsten Vergleiche als Beleg, dass Matching und Vergleich laufen.
  */
 function EmptyState({
   status,

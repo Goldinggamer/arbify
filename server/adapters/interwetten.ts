@@ -4,27 +4,9 @@ import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 
 /**
- * Interwetten.
- *
- * Der SignalR-Hub der Seite (`sr5.gamesassists.com/lbfeventHub`) verbindet
- * sich zwar und nimmt Abos an, pusht aber nur sporadisch Änderungen für
- * laufende Spiele — als Bestandsquelle unbrauchbar. Der tragfähige Weg ist
- * schlichtes HTTP: `/de/sport/upcoming/{sportId}?hours={n}` rendert das
- * komplette Vorspiel-Programm serverseitig ins HTML, ohne Login und Cookie.
- *
- * Aufbau je Partie:
- *   <li class="s-event">
- *     <a href="/de/sportwetten/e/{eventId}/{slug}">
- *     <strong class="s-event-player">Heim</strong>
- *     <strong class="s-event-player">Auswärts</strong>
- *     <div class="js-gametime-{eventId}"><span>28.07. - 17:00</span>
- *     <div data-betting="[marktId, eventId, kurz, "Spiel", …]">
- *       <div data-betting="[outcomeId, "1"|"X"|"2", …]">
- *         <span class="s-outcome-odd">3.05</span>
- *
- * Zwei Eigenheiten: die Quote steht sowohl im `data-betting` (mit deutschem
- * Komma) als auch im Span (mit Punkt) — genutzt wird der Span. Und die
- * Anstoßzeit kommt **ohne Jahr**, das muss erschlossen werden.
+ * Interwetten — `/de/sport/upcoming/{sportId}?hours={n}` rendert das
+ * Vorspiel-Programm ins HTML, ohne Login. Je Partie `li.s-event` mit
+ * Teams, Anstoß (ohne Jahr) und `data-betting`; die Quote kommt aus dem Span.
  */
 
 const HOST = 'https://www.interwetten.de'
@@ -32,14 +14,7 @@ const OPTS = { transport: 'impit' as const, minIntervalMs: 400 }
 /** Sportkennung laut `data-kos-id` in der Navigation: 10 = Fußball, 11 = Tennis. */
 const SPORT_FOOTBALL = 10
 
-/**
- * Sportarten samt Kennung und Hauptmarkt.
- *
- * Tennis liegt auf 11 — nachgemessen, nicht fortgezählt: 40, 12 und 80
- * liefern null bzw. eine Partie, 11 liefert 84. Und der Hauptmarkt ist dort
- * **zweiseitig**: als `1X2` verbucht verlangte er über `SIDES` ein
- * Unentschieden, das es nie gibt, und wäre nie vollständig geworden.
- */
+/** Sportarten samt Kennung und Hauptmarkt. Tennis ist 11 und zweiseitig. */
 const SPORTS: { id: number; sport: Sport; market: CanonicalMarket }[] = [
   {
     id: SPORT_FOOTBALL,
@@ -53,14 +28,7 @@ const SPORTS: { id: number; sport: Sport; market: CanonicalMarket }[] = [
   },
 ]
 
-/**
- * Nur die Siegwette. Geprüft: `offergroupid=8` (Über/Unter) und `109`
- * (Beide Teams treffen) werden von `/de/sport/upcoming` ignoriert — der
- * Parameter greift dort nicht, die Seite liefert unverändert "Spiel".
- * Weitere Märkte gäbe es über `/de/sport/leaguelist?leagueIds=…`, das
- * bräuchte aber erst eine Liga-Liste. Zwei Abrufe ins Leere pro Durchlauf
- * sind das nicht wert.
- */
+/** Nur die Siegwette — `offergroupid` greift auf dieser Seite nicht. */
 
 const decode = (s: string): string =>
   s
@@ -71,13 +39,7 @@ const decode = (s: string): string =>
     .replace(/&gt;/g, '>')
     .trim()
 
-/**
- * "28.07. - 17:00" → ISO-Zeitstempel.
- *
- * Ohne Jahresangabe: es gilt das laufende Jahr, außer das Datum läge damit
- * mehr als zwei Monate in der Vergangenheit — dann ist der Jahreswechsel
- * gemeint. Interwetten rechnet in deutscher Ortszeit.
- */
+/** "28.07. - 17:00" → ISO. Laufendes Jahr, außer das Datum läge über zwei Monate zurück; deutsche Ortszeit. */
 function parseKickoff(text: string, now = new Date()): string | null {
   const m = /(\d{1,2})\.(\d{1,2})\.?\s*-\s*(\d{1,2}):(\d{2})/.exec(text)
   if (!m) return null

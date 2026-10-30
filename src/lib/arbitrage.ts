@@ -45,16 +45,9 @@ type ArbResult = {
 const round = (v: number, step: number) => (step > 0 ? Math.round(v / step) * step : v)
 
 /**
- * Berechnet die optimale Aufteilung der Bankroll über alle Outcomes.
- *
- * Kernidee: Einsätze werden proportional zu 1/quote verteilt. Dadurch ist die
- * Auszahlung bei jedem Outcome identisch (= Gesamteinsatz / implied) und der
- * Gewinn ist unabhängig vom Ergebnis garantiert — das ist per Definition das
- * Maximum an sicherem Gewinn für einen gegebenen Gesamteinsatz.
- *
- * Gerechnet wird mit den Quoten, wie sie beim Buchmacher stehen. Die
- * Wettsteuer bleibt außen vor und erscheint nur als Hinweis an der Wette —
- * siehe `src/data/tax.ts`.
+ * Optimale Aufteilung der Bankroll: Einsätze proportional zu 1/Quote, damit
+ * jede Auszahlung gleich ist. Gerechnet mit den Quoten des Buchmachers; die
+ * Wettsteuer erscheint nur als Hinweis (`src/data/tax.ts`).
  */
 export function calculateArbitrage(
   odds: { odds: number; label: string; bookmakerId: string }[],

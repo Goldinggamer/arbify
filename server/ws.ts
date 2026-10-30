@@ -2,29 +2,10 @@ import WebSocket from 'ws'
 import { taped } from './tape.ts'
 
 /**
- * Zweite Transportschicht: JSON-RPC über WebSocket.
- *
- * Mehrere Anbieter liefern ihre Quoten grundsätzlich nicht über HTTP-Abrufe,
- * sondern nur über eine dauerhafte Verbindung — BetConstruct über ein eigenes
- * "swarm"-Protokoll, andere über SignalR. Der Rest des Systems soll davon
- * nichts merken: ein Adapter fragt an, bekommt JSON zurück, fertig.
- *
- * Bewusst die `ws`-Bibliothek statt Nodes eingebautem WebSocket. Zwei Gründe,
- * beide praktisch erzwungen:
- *   - **Header.** SignalR-Hubs prüfen `Origin`; der eingebaute Client kann
- *     keine setzen und wird abgewiesen.
- *   - **`unref`.** Eine offene Verbindung hält den Node-Prozess sonst am
- *     Leben, und einmalige Skripte wie `npm run scan:once` beenden sich nie.
- *
- * Was diese Klasse übernimmt:
- *   - Verbindung offen halten (ein Handshake kostet rund eine Sekunde; bei
- *     vier Sekunden Refresh-Takt wäre Auf- und Abbau reine Verschwendung)
- *   - Antworten zuordnen (über die Leitung laufen Antworten und
- *     unaufgeforderte Aktualisierungen gemischt ein — jede Anfrage bekommt
- *     eine `rid`)
- *   - Ausfälle überstehen (bricht die Verbindung ab, wird beim nächsten
- *     Aufruf neu verbunden; offene Anfragen laufen in ihren Timeout statt zu
- *     hängen)
+ * JSON-RPC über WebSocket (BetConstruct „swarm“). Hält die Verbindung offen,
+ * ordnet Antworten über eine `rid` zu und verbindet nach Abbrüchen beim
+ * nächsten Aufruf neu. Die `ws`-Bibliothek, weil sie `Origin` setzen kann und
+ * per `unref` einmalige Skripte nicht am Beenden hindert.
  */
 
 type RpcOptions = {

@@ -24,14 +24,7 @@ export type ScanStatus = {
   /** Quellen, die wegen unklarer Zuordnung verworfen wurden */
   droppedSources: number
   books: { bookmakerId: string; durationMs: number; error?: string }[]
-  /**
-   * Zeitfenster des Scanners in Stunden.
-   *
-   * Kommt vom Server, damit die Oberfläche nicht mit einer eigenen Zahl
-   * danebenliegt: schnitte sie enger zu, verschwänden Funde ohne sichtbaren
-   * Grund; schnitte sie weiter, zeigte sie Partien an, für die gar keine
-   * Quoten mehr geholt werden.
-   */
+  /** Zeitfenster des Scanners in Stunden — vom Server, damit die Oberfläche gleich zuschneidet. */
   windowHours: number
   /** Knappste Vergleiche, auch wenn sie keine Arbitrage sind */
   margins: {
@@ -141,14 +134,7 @@ export type PushStatus = {
   hasConfig: boolean
 }
 
-/**
- * Spiegelt Filter und Einstellungen zum Server.
- *
- * Der Server meldet, während niemand vor dem Bildschirm sitzt — er muss also
- * wissen, wonach gefiltert wird. Geschickt wird der **komplette** Filter, nicht
- * eine Auswahl daraus: serverseitig läuft dieselbe `applyFilters`, und die
- * braucht alle Felder.
- */
+/** Spiegelt den kompletten Filter zum Server; dort läuft dasselbe `applyFilters`. */
 export async function putAlertConfig(
   filters: Filters,
   settings: Settings,
@@ -172,13 +158,8 @@ export async function putAlertConfig(
 }
 
 /**
- * Holt den auf dem Server abgelegten Zugang.
- *
- * Nötig, weil der Server ihn über Neustarts hinweg behält, ein frisch
- * geöffneter Browser aber nichts davon weiß. Ohne diesen Abgleich würde die
- * erste Spiegelung einen leeren Zugang schicken und den gespeicherten
- * überschreiben — die Meldungen hörten auf, ohne dass irgendwo ein Fehler
- * stünde.
+ * Holt den auf dem Server abgelegten Zugang — sonst überschriebe die erste
+ * Spiegelung eines frischen Browsers ihn mit einem leeren.
  */
 export async function fetchAlertConfig(): Promise<{
   push: PushConfig | null
@@ -209,13 +190,7 @@ export async function testPush(): Promise<{ ok: boolean; error?: string }> {
   }
 }
 
-/**
- * Lädt die Quoten sofort nach und wartet, bis das durch ist.
- *
- * Der Server gibt hier nie den alten Stand zurück: läuft gerade ein
- * Durchlauf, wird er abgewartet und danach ein frischer gestartet. `full`
- * erzwingt zusätzlich einen kompletten Sweep über alle Ligen.
- */
+/** Lädt die Quoten sofort nach und wartet darauf; `full` erzwingt einen kompletten Durchlauf. */
 export async function triggerScan(full = false, signal?: AbortSignal): Promise<void> {
   await fetch(full ? '/api/scan?full=1' : '/api/scan', { signal })
 }

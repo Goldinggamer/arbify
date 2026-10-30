@@ -5,46 +5,12 @@ import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 
 /**
- * Spectate — Plattform-Adapter, derzeit für 888sport (Deutschland).
+ * Spectate (888sport Deutschland). Zugang in drei Stufen (docs/datenbeschaffung.md):
+ * HttpOnly-Kekse von `www.888sport.de` am AWS-Load-Balancer vorbei, dann
+ * `POST /spectate/load/state` für die Sitzung. Die Bootstrap-Werte stehen fest je Marke.
  *
- * Vorgeschichte: 888sport.de lief früher auf Kambi, deshalb suchte eine
- * frühere Fassung dieses Projekts vergeblich nach einem deutschen
- * Kambi-Markencode. Den gibt es nicht — die Marke ist auf **Spectate**
- * umgezogen (`brandName: "888.de"`, Frontend von `cdn.spectateprod.com`,
- * API unter `spectate-web.888sport.de`).
- *
- * ## Der Zugang war dreistufig
- *
- * 1. Ohne alles antwortet der API-Host mit **403** und `server: awselb/2.0` —
- *    das ist der AWS-Load-Balancer, nicht die Anwendung. Kein Header kommt
- *    daran vorbei, auch keine Nachbildung des Chrome-Handshakes.
- * 2. Ein Abruf von `www.888sport.de` setzt zwei **HttpOnly**-Kekse,
- *    `888Attribution` und `888Cookie`. Erst damit wechselt die Antwort auf
- *    `server: nginx` — der Balancer lässt durch. Weil die Kekse HttpOnly sind,
- *    tauchen sie in `document.cookie` nicht auf; im Browser war also nicht zu
- *    sehen, woran es lag.
- * 3. `POST /spectate/load/state` als multipart/form-data eröffnet die Sitzung
- *    und liefert per `Set-Cookie` die eigentlichen Sitzungskekse
- *    (`spectate_session`, `anon_hash`, `lang`, `odds_format`). Ohne die
- *    antworten alle Datenendpunkte mit 400.
- *
- * Die Feldwerte des Bootstraps stehen fest je Marke. Sie stammen aus dem
- * Webpack-Modul 30702 der Seite — erreichbar, indem man sich über
- * `webpackChunksportsbookweb.push` das `require` der Anwendung greift und das
- * Modul ausliest.
- *
- * ## Was der Adapter kann — und was nicht
- *
- * `/inplay-req/getScheduledEvents?date=…` liefert das Vorspiel-Programm eines
- * Tages samt Quoten, aber **nur die Siegwette**. Kein Marktumschalter greift:
- * `market_type`, `market_id`, `markets` und `market` wurden durchprobiert, die
- * Antwort bleibt bei drei Auswahlmöglichkeiten je Partie (1/X/2). Die tieferen
- * Märkte hängen an einem Endpunkt, den dieses Bündel nicht kennt, oder am
- * WebSocket aus `websockets:config`.
- *
- * Deshalb gibt es hier **kein `fetchDepth`**. Das ist weniger schlimm, als es
- * klingt: die Siegwette ist der Markt, in dem die meisten Vergleiche
- * überhaupt zustande kommen.
+ * `getScheduledEvents` liefert nur die Siegwette; die übrigen Märkte gibt es
+ * nur per WebSocket. Deshalb kein `fetchDepth`.
  */
 
 const WEB = 'https://www.888sport.de'
@@ -110,13 +76,7 @@ type SpCoupon = { sports?: SpSport[]; selections?: Record<string, SpSelection[]>
 
 // --- Sitzung ---------------------------------------------------------------
 
-/**
- * Keksbeutel der laufenden Sitzung.
- *
- * Spectate schreibt die Sitzung über mehrere Antworten hinweg fort, deshalb
- * ein eigener Beutel statt einzelner Header — `impit` führt von sich aus
- * keinen.
- */
+/** Keksbeutel der Sitzung — Spectate schreibt sie über mehrere Antworten fort, `impit` führt keinen. */
 let jar = new Map<string, string>()
 let sessionOpenedAt = 0
 
@@ -200,13 +160,7 @@ function toSide(type: string | undefined): Side | null {
   }
 }
 
-/**
- * Die Auswahlmöglichkeiten tragen die Mannschaftszuordnung selbst.
- *
- * `competitors` wäre der naheliegende Weg, sagt aber nicht, welche Seite
- * Heim ist — die Reihenfolge im Feed ist keine Zusage. `home_team_name` und
- * `away_team_name` stehen dagegen an jeder Auswahl ausdrücklich dabei.
- */
+/** Heim und Gast stehen ausdrücklich an jeder Auswahl; die Reihenfolge von `competitors` ist keine Zusage. */
 function teamsOf(sels: SpSelection[], ev: SpEvent): { home: string; away: string } | null {
   const withTeams = sels.find((s) => s.home_team_name && s.away_team_name)
   if (withTeams) return { home: withTeams.home_team_name!, away: withTeams.away_team_name! }
@@ -214,13 +168,7 @@ function teamsOf(sels: SpSelection[], ev: SpEvent): { home: string; away: string
   return parts.length === 2 && parts[0] && parts[1] ? { home: parts[0].trim(), away: parts[1].trim() } : null
 }
 
-/**
- * Sportarten, die der Kupon führt.
- *
- * Der Hauptmarkt ist bei Tennis **zweiseitig** — die Auswahl trägt dort nur
- * `1` und `2`, kein `X`. Als `1X2` verbucht verlangte er über `SIDES` ein
- * Unentschieden und wäre nie vollständig geworden.
- */
+/** Sportarten des Kupons. Im Tennis ist der Hauptmarkt zweiseitig (nur `1` und `2`). */
 const SPORTS: { slug: string; sport: Sport; market: CanonicalMarket }[] = [
   {
     slug: 'football',
@@ -331,17 +279,7 @@ export const sport888de: BookmakerAdapter = {
 }
 
 /**
- * Der Link führt auf die Fußball-Übersicht — mehr ist nicht zu holen.
- *
- * Zwei Wege geprüft, beide sackgassig:
- *
- *  - **Partie-Adressen gibt es nicht.** Alle plausiblen Muster aus den Slugs
- *    des Feeds (`/sportwetten/fussball/{land}/{wettbewerb}/{partie}` und
- *    Varianten) antworten mit 404.
- *  - **Der Alias-Katalog der Plattform hilft nicht.** Er kennt zwar
- *    Wettbewerbe als `t-{id}`, hat aber nur 51 Einträge, und seine Kennungen
- *    liegen in einem anderen Nummernraum als die des Kupons: die dänische Liga
- *    steht dort als `t-321518`, im Kupon heißt dieselbe Liga `t-561824`. Eine
- *    Zuordnung über den Namen wäre Raterei.
+ * Der Link führt auf die Fußball-Übersicht: Partie-Adressen lassen sich aus
+ * dem Feed nicht bilden (404), und der Alias-Katalog nutzt andere Kennungen.
  */
 const eventUrl = (slug = 'football'): string => `${WEB}/${slug === 'tennis' ? 'tennis' : 'fussball'}/`

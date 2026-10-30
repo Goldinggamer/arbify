@@ -1,48 +1,12 @@
 /**
- * Wettsteuer je Anbieter — als Hinweis, nicht als Rechenposten.
+ * Wettsteuer (5,3 %) je Anbieter — als Hinweis, nicht als Rechenposten
+ * (docs/schutzschranken.md#wettsteuer).
  *
- * In Deutschland fallen nach dem Rennwett- und Lotteriegesetz 5,3 % auf jede
- * Sportwette an (seit 1. Juli 2021, vorher 5 %). Die Steuer schuldet immer der
- * Buchmacher — ob er sie an den Kunden weiterreicht, ist seine Entscheidung.
- * Genau das macht sie für eine Arbitrage zum entscheidenden Posten:
+ * `stake` Abzug vom Einsatz, `gross` vom Bruttogewinn, `profit` nur vom
+ * Nettogewinn. `stake` und `gross` sind rechnerisch gleich, bleiben aber
+ * getrennt, weil der Wettschein es anders beschriftet.
  *
- *   Eine Arbitrage von 3 % über zwei Bücher, von denen eines die Steuer
- *   weitergibt, ist keine Arbitrage mehr. 5,3 % auf ein Bein, das gut die
- *   Hälfte des Einsatzes trägt, kosten rund 2,7 Prozentpunkte Rendite — mehr
- *   als der ganze Fund wert war.
- *
- * ## Die drei Wege, die Steuer weiterzureichen
- *
- * `stake`  — Abzug vom Einsatz: von 100 € landen 94,70 € auf der Wette.
- * `gross`  — Abzug vom Bruttogewinn, also von der Auszahlung.
- * `profit` — Abzug nur vom Nettogewinn (Auszahlung minus Einsatz).
- *
- * `stake` und `gross` sind rechnerisch dasselbe: 50 € auf Quote 2,20 ergeben
- * brutto 110 €, minus 5,3 % sind 104,17 € — identisch zu 47,35 € (= 50 € minus
- * Steuer) auf Quote 2,20. Beide werden deshalb als Faktor auf die Quote
- * gerechnet. Nur `profit` ist günstiger und wird getrennt gerechnet. Die
- * Unterscheidung zwischen `stake` und `gross` bleibt trotzdem erhalten, weil
- * der Hinweistext im Wettschein anders lautet und der Nutzer wissen soll,
- * wonach er sucht.
- *
- * ## Warum hier nichts gerechnet wird
- *
- * Die App weist die Rendite aus den Quoten aus, so wie sie beim Buchmacher
- * stehen. Sie zieht die Steuer **nicht** ab. Das ist bewusst so: wie viel am
- * Ende hängen bleibt, hängt am Konto — an Freiwetten, an Aktionen, an der im
- * Wettschein tatsächlich angezeigten Quote. Eine Zahl, die all das nicht
- * kennt, aber so aussieht, als kenne sie es, wäre schlechter als der schlichte
- * Hinweis: „bei diesem Bein kommt die Steuer noch drauf."
- *
- * ## Belastbarkeit der Einträge
- *
- * `verified: false` heißt: für diesen Anbieter ließ sich die Handhabung nicht
- * eindeutig belegen. Angenommen wird dann **mit** Steuer — die vorsichtige
- * Richtung. Ein Hinweis zu viel kostet einen Blick in den Wettschein, ein
- * Hinweis zu wenig kostet Geld.
- *
- * Stand der Recherche: Juli 2026. Buchmacher ändern das ohne Ankündigung —
- * die Angabe ersetzt keinen Blick in den eigenen Wettschein.
+ * `verified: false`: nicht belegt, angenommen wird mit Steuer. Stand: Juli 2026.
  */
 
 // Der Steuersatz — 5,3 % nach § 17 Abs. 2 Rennwett- und Lotteriegesetz —

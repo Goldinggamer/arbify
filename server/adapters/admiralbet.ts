@@ -7,14 +7,7 @@ import type { AdapterContext, BookmakerAdapter } from './types.ts'
 
 const HOST = 'www.admiralbet.de'
 
-/**
- * Obergrenze für Tiefenabfragen je Durchlauf.
- *
- * Die Abfragen laufen seriell (siehe `fetchDepth`), also kostet jede rund eine
- * Viertelsekunde. Vierzig halten die Phase bei etwa zehn Sekunden — mehr würde
- * den Gesamtlauf dominieren, ohne dass die zusätzlichen Partien noch viel
- * Vergleichsfläche brächten.
- */
+/** Obergrenze für Tiefenabfragen je Durchlauf — seriell je ~¼ s, vierzig halten die Phase bei ~10 s. */
 const MAX_DEPTH = 40
 const FOOTBALL = 'asw:category:10000002'
 
@@ -59,13 +52,7 @@ const SHALLOW_TYPES = [
   'asw:markettype:14',
 ]
 
-/**
- * Sportarten samt Kategorie-Kennung.
- *
- * Die Kennungen liegen dicht beieinander (10000002 Fußball, 10000003
- * Basketball, 10000004 Baseball, 10000005 Eishockey, 10000006 Tennis) — sie
- * sind trotzdem einzeln nachgemessen, nicht fortgezählt.
- */
+/** Sportarten samt Kategorie-Kennung (einzeln nachgemessen). */
 const SPORTS: { category: string; sport: Sport; shallow: string[] }[] = [
   { category: FOOTBALL, sport: 'FOOTBALL', shallow: SHALLOW_TYPES },
   {
@@ -94,13 +81,8 @@ const KNOWN_UNMAPPED = new Set([
 ])
 
 /**
- * Tennis-Märkte.
- *
- * Anders als beim Fußball reicht hier keine Tabelle Typ → Markt: der
- * Satzsieger läuft über **einen** Typ (`202`, "{!setnr} set - winner") und
- * trägt die Satznummer in `properties.setnr`. Und `properties.hcp` ist beim
- * Tennis eine **Zahl** (−1,5), beim Fußball dagegen die Zeichenkette "0:1" —
- * dieselbe Eigenschaft, zwei Formate.
+ * Tennis: der Satzsieger läuft über einen Typ (`202`) mit `properties.setnr`,
+ * und `hcp` ist hier eine Zahl statt "0:1".
  */
 function toTennisMarket(typeUrn: string, props: Record<string, any>): CanonicalMarket | null {
   const num = (v: unknown): number | null => {
@@ -141,13 +123,8 @@ function toTennisMarket(typeUrn: string, props: Record<string, any>): CanonicalM
 }
 
 /**
- * Tennis-Typen, die bekannt und bewusst nicht zugeordnet sind.
- *
- * `196` ("Exact sets") ist mit den Auswahlmöglichkeiten "2" und "3" im
- * Best-of-3 rechnerisch dasselbe wie Über/Unter 2,5 Sätze — zugeordnet wird es
- * trotzdem nicht: AdmiralBet liefert daneben `314` ("Total sets") mit genau
- * dieser Linie. Beide zugleich hieße zwei Quoten desselben Buchs auf derselben
- * Seite, und damit wäre die Kollisionszählung als Warnsystem entwertet.
+ * Bekannt und bewusst nicht zugeordnet. `196` („Exact sets“) wäre Über/Unter
+ * 2,5 — doch `314` liefert dieselbe Linie, beides zusammen wäre eine Kollision.
  */
 const KNOWN_UNMAPPED_TENNIS = /^asw:markettype:(19[23]|196|199|201|203|204|205)\b/
 
@@ -319,24 +296,9 @@ export const admiralbet: BookmakerAdapter = {
   },
 
   /**
-   * Tiefe **seriell**, nicht zu viert.
-   *
-   * Nachgemessen an denselben vier Partien: nebenläufig wurde genau eine
-   * vertieft, einzeln alle vier — 33→102, 38→111, 38→113, 38→111 Quoten. Über
-   * einen ganzen Durchlauf hieß das `vertieft=1/120` statt 120, und die
-   * Team-Totals von AdmiralBet fehlten dadurch zeitweise vollständig.
-   *
-   * Die Ursache liegt im Gateway: `RetrieveDetailView` liefert seine Entitäten
-   * nicht in der Antwort, sondern über den gemeinsamen Snapshot-Strom, und der
-   * Aufrufer liest sie danach aus `gateway.entity()`. Laufen mehrere Abfragen
-   * gleichzeitig, ist beim Auslesen nicht zugesichert, dass die Entitäten der
-   * *eigenen* Partie schon oder noch da sind. Das ist ein Fehler der
-   * Transportschicht und war lange vor Tennis da — er fiel nur nie auf, weil
-   * eine niedrige Vertiefungsquote wie ein langsamer Anbieter aussieht und
-   * nicht wie ein Fehler.
-   *
-   * Bis das Gateway seine Antworten selbst zuordnet, ist Serialisieren die
-   * belastbare Lösung. `MAX_DEPTH` deckelt die Laufzeit.
+   * Tiefe seriell: `RetrieveDetailView` liefert seine Entitäten über den
+   * gemeinsamen Snapshot-Strom, und nebenläufig ist nicht zugesichert, dass die
+   * der eigenen Partie beim Auslesen da sind.
    */
   async fetchDepth(events: RawEvent[]): Promise<RawEvent[]> {
     return deepen(events.slice(0, MAX_DEPTH), 1, async (ev, sport) => {

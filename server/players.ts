@@ -1,28 +1,9 @@
 /**
- * Namensabgleich für Einzelsportler.
- *
- * Der Vereinsabgleich in `match.ts` vergleicht Wortmengen. Bei Spielernamen
- * scheitert das schon am Normalfall: "Alcaraz C." und "Carlos Alcaraz" teilen
- * genau ein Wort, das ergibt 0,50 und liegt unter der Andockschwelle von 0,75.
- * Gemessen über vierzehn echte Namenspaare fiel **jedes einzelne** durch.
- *
- * Schlimmer als das Verfehlen ist die Verwechslung, und die trifft ausgerechnet
- * Geschwister — im Tennis keine Randerscheinung:
- *
- *   "Zverev A."      gegen Alexander Zverev   0,50
- *   "Zverev A."      gegen Mischa Zverev      0,50   ← nicht unterscheidbar
- *   "Cerundolo J.M." gegen Juan Manuel C.     0,33
- *   "Cerundolo J.M." gegen Francisco C.       0,50   ← falscher Bruder gewinnt
- *
- * Die Initiale, die den Unterschied macht, behandelt der Wortmengenvergleich
- * als beliebiges Wort — und weil sie nur ein Zeichen lang ist, zieht sie den
- * Nenner hoch statt den Treffer zu bestätigen.
- *
- * Deshalb ein eigenes Modell: ein Name zerfällt in **Namenswörter** und
- * **Initialen**. Zwei Namen bezeichnen dieselbe Person, wenn die Wörter des
- * kürzeren im längeren vorkommen und keine Initiale widerspricht. Eine
- * widersprechende Initiale schlägt den Treffer aus — das ist die eigentliche
- * Leistung, nicht das Finden.
+ * Namensabgleich für Einzelsportler. Wortmengen versagen hier: "Alcaraz C."
+ * und "Carlos Alcaraz" teilen ein Wort, und Geschwister ("Zverev A." gegen
+ * Mischa Zverev) wären nicht zu trennen. Ein Name zerfällt deshalb in
+ * Namenswörter und Initialen: dieselbe Person, wenn die Wörter des kürzeren
+ * im längeren stehen und keine Initiale widerspricht.
  */
 
 type ParsedName = {
@@ -51,14 +32,7 @@ const fold = (s: string): string =>
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
 
-/**
- * Zerlegt einen Namen.
- *
- * Das angehängte Länderkürzel fliegt vorher raus: bwin schreibt "Alex
- * Hernandez (MEX)", Kambi denselben Spieler als "Alex Hernandez". Bliebe das
- * Kürzel stehen, wäre es ein Namenswort wie jedes andere — und "(MEX)" gegen
- * "(ESP)" würde zwei Schreibweisen derselben Person trennen.
- */
+/** Zerlegt einen Namen; das Länderkürzel ("(MEX)") fliegt vorher raus. */
 export function parseName(raw: string): ParsedName {
   const parts = fold(raw)
     .replace(/\((?:[a-z]{2,3})\)/g, ' ')
@@ -84,12 +58,8 @@ const splitTeam = (raw: string): string[] =>
     .filter(Boolean)
 
 /**
- * Prüft die Initialen **einer** Seite gegen die übrigen Vornamen der anderen.
- *
- * Zurück kommt `null`, sobald eine Initiale widerspricht — sonst die Zahl der
- * Initialen, die tatsächlich bestätigt werden konnten. Nicht überprüfbar ist
- * nicht dasselbe wie falsch: trägt die Gegenseite gar keine ausgeschriebenen
- * Vornamen mehr, lässt sich "C." schlicht nicht widerlegen.
+ * Prüft die Initialen einer Seite gegen die Vornamen der anderen: `null` bei
+ * Widerspruch, sonst die Zahl bestätigter Initialen.
  */
 function checkInitials(initials: string[], spare: string[], otherInitials: string[]): number | null {
   const rest = [...spare]
@@ -112,13 +82,7 @@ function checkInitials(initials: string[], spare: string[], otherInitials: strin
   return confirmed
 }
 
-/**
- * Bezeichnen zwei Namen dieselbe Person? 0 heißt nein.
- *
- * Ein Treffer liegt bei 0,8; alle Initialen bestätigt ergibt 1,0. Die
- * Abstufung dient nur der Auswahl unter mehreren Kandidaten — die Schwelle
- * liegt darunter, ein Treffer ist ein Treffer.
- */
+/** Bezeichnen zwei Namen dieselbe Person? 0 heißt nein, 0,8 Treffer, 1,0 alle Initialen bestätigt. */
 export function nameMatch(a: string, b: string): number {
   const pa = parseName(a)
   const pb = parseName(b)
@@ -144,13 +108,7 @@ export function nameMatch(a: string, b: string): number {
   return total ? 0.8 + 0.2 * (fromShort / total) : 0.8
 }
 
-/**
- * Wie `nameMatch`, aber auch für Doppel.
- *
- * Beide Seiten müssen gleich viele Spieler haben, und jeder braucht einen
- * eigenen Gegenpart — die Reihenfolge ist nicht zugesagt: bwin führt
- * "R. Ram/J. Salisbury", ein anderes Buch dieselbe Paarung umgekehrt.
- */
+/** Wie `nameMatch`, auch für Doppel — gleich viele Spieler, Reihenfolge egal. */
 export function playerMatch(a: string, b: string): number {
   const ta = splitTeam(a)
   const tb = splitTeam(b)

@@ -7,52 +7,23 @@ import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 
 /**
- * OpenBet — Plattform-Adapter, derzeit für DAZN Bet.
+ * OpenBet (DAZN Bet) — Quoten nur über LiveDoc (`server/livedoc.ts`) auf
+ * dem Wett-Host `sb-pp-defe.daznbet.de`:
  *
- * Der einzige Anbieter im Feld, der **keine** Quoten über HTTP herausgibt.
- * Alles läuft über „LiveDoc": STOMP über SockJS, siehe `server/livedoc.ts`
- * für die Transportschicht. Die Hauptseite `www.daznbet.de` bindet den
- * Wettbereich nur als iframe von `sb-pp-defe.daznbet.de` ein — dort liegen
- * auch die LiveDoc-Dienste.
+ *   /eventmaplivedocl1  `eventmap/{typ}{sportId}` → Kupon (Kennungen, Anstoß)
+ *   /eventlivedocl1     `events/{id}`, `eventmarketsmap/{id}`, `competitions/{id}`
+ *   /marketlivedocl1    `markets/{marktId}` → ein Markt samt Quoten
  *
- * Drei Dienste, drei Zuständigkeiten:
- *
- *   /eventmaplivedocl1/livedoc   `eventmap/{typ}{sportId}` → der Kupon:
- *                                Kennungen und Anstoßzeiten, sonst nichts.
- *                                `X-Size` deckelt bei 500.
- *   /eventlivedocl1/livedoc      `events/{id}`             → Teams, Liga-ID
- *                                `eventmarketsmap/{id}`    → alle Marktkennungen
- *                                                            mit Typ, ohne Quoten
- *                                `competitions/{id}`       → Liganame
- *   /marketlivedocl1/livedoc     `markets/{marktId}`       → ein Markt samt Quoten
- *
- * Daraus folgt der Zuschnitt: die Übersicht holt Kupon, Partieköpfe und je
- * Partie **nur** die Siegwette (`miniCoupons.MAIN`). Erst die Tiefenstufe
- * fragt `eventmarketsmap` ab und lädt die Märkte, die im kanonischen Modell
- * ein Gegenstück haben. Ohne diese Trennung wären es 85 Abos je Partie.
- *
- * Gemessen ist das leistbar: eine offene Verbindung schafft rund 900 Abos je
- * Sekunde, der Kupon mit 500 Partien kommt in 370 ms.
+ * Der Sweep holt je Partie nur die Siegwette; erst die Tiefe lädt die übrigen
+ * Märkte mit Gegenstück im Modell.
  */
 
 const HOST = 'sb-pp-defe.daznbet.de'
 const LANG = 'de'
-/**
- * Auch die Tiefenlinks zeigen auf den Wett-Host, nicht auf `www.daznbet.de`.
- *
- * Nachgemessen: `www.daznbet.de/de-de/fußball/event/…` antwortet selbst mit
- * exakt richtigem Kürzel „Wir können die von dir aufgerufene Seite leider
- * nicht finden". Die Hauptseite kennt die Wettrouten gar nicht — sie bindet
- * diesen Host als iframe ein. Unter `sb-pp-defe.daznbet.de` öffnet dieselbe
- * Adresse die Partie.
- */
+/** Tiefenlinks auf den Wett-Host — `www.daznbet.de` kennt die Wettrouten nicht. */
 const WEB = `https://${HOST}`
 
-/**
- * Kupon-Kennung je Sportart. `FBL` ist Fußball, `TNS` Tennis — nicht `TEN`,
- * das liefert eine leere Antwort statt eines Fehlers und sähe damit aus wie
- * "keine Partien im Fenster".
- */
+/** Kupon-Kennung je Sportart. Tennis ist `TNS`; `TEN` liefert still eine leere Antwort. */
 const SPORTS: { coupon: string; sport: Sport }[] = [
   { coupon: 'upcomingFBL', sport: 'FOOTBALL' },
   { coupon: 'upcomingTNS', sport: 'TENNIS' },
@@ -121,15 +92,8 @@ function periodOf(period: string | undefined): Period | null {
 }
 
 /**
- * Markttyp → kanonisches Modell.
- *
- * Als **Positivliste** und mit **exaktem** Vergleich, nicht mit Präfixen. Der
- * Grund steht direkt im Datenbestand: OpenBet setzt Kombiwetten aus zwei
- * Typen zusammen, getrennt durch `&&` — `TOTALS-OU&&WHOSCORES2-G-12` ist
- * „Beide Teams treffen **und** Über/Unter 3.5". Ein Präfixvergleich auf
- * `TOTALS-OU` würde diese Kombiwette als gewöhnliches Über/Unter verbuchen
- * und gegen echte Über/Unter-Quoten anderer Bücher rechnen. Das Ergebnis wäre
- * Scheinarbitrage, die beim Setzen sofort auffliegt.
+ * Markttyp → Modell. Positivliste mit exaktem Vergleich: Kombiwetten heißen
+ * `TOTALS-OU&&WHOSCORES2-G-12` und gingen per Präfix als Über/Unter durch.
  */
 function toMarket(ref: { type?: string; period?: string }, line: number | null): CanonicalMarket | null {
   const period = periodOf(ref.period)
@@ -155,14 +119,7 @@ function toMarket(ref: { type?: string; period?: string }, line: number | null):
   }
 }
 
-/**
- * Tennis-Markttypen.
- *
- * `WINNER2` heißt hier zweiseitig — das `D` im Fußball-Pendant `WINNER2D`
- * steht für die dritte Seite (Draw), die es im Tennis nicht gibt. Und
- * `TOTALS-OU` teilen sich beide Sportarten, meint im Tennis aber **Sätze**:
- * "Gesamt Über/Unterr Sätzes 2.5" mit Linie 2,5, nicht Tore.
- */
+/** Tennis: `WINNER2` ist zweiseitig; `TOTALS-OU` zählt hier Sätze. */
 function toTennisMarket(ref: { type?: string; period?: string }, line: number | null): CanonicalMarket | null {
   const period = periodOf(ref.period)
   if (!period) return null
@@ -223,12 +180,8 @@ function toSide(sel: ObSelection): Side | null {
 }
 
 /**
- * Die Linie eines Marktes steht in den Auswahlmöglichkeiten, nicht im Markt.
- *
- * Bei Über/Unter tragen beide Seiten denselben Wert. Beim Handicap tragen sie
- * **entgegengesetzte** Werte (Heim −1, Auswärts +1); maßgeblich ist die Sicht
- * der Heimmannschaft, also der Wert der Heim-Auswahl. Dieselbe Konvention wie
- * im kanonischen Modell.
+ * Die Linie steht an den Auswahlmöglichkeiten. Beim Handicap gegenläufig —
+ * maßgeblich ist die Heim-Auswahl.
  */
 function lineOf(selections: ObSelection[]): number | null {
   const home = selections.find((s) => (s.selTemplate ?? s.side) === 'HOME')
@@ -283,14 +236,7 @@ function teamsOf(ev: ObEvent): { home: string; away: string } | null {
 }
 
 /**
- * Adresskürzel aus dem Partienamen.
- *
- * Wichtig: Akzente bleiben stehen. Von der Seite abgelesen heißen die Links
- * `…/event/atlético-tucumán-v-independiente-rivadavia-bg-5034894` und
- * `…/event/flamengo-v-são-paulo-bg-5137026` — nicht umschrieben. Und das
- * Kürzel ist nicht bloß Zierde: mit falschem Kürzel zeigt die Seite „Wir
- * können die von dir aufgerufene Seite leider nicht finden", die Kennung
- * allein genügt also nicht.
+ * Adresskürzel aus dem Partienamen. Akzente bleiben stehen (`são-paulo`); mit falschem Kürzel findet die Seite die Partie nicht.
  */
 const slug = (s: string): string =>
   s
@@ -314,21 +260,7 @@ const leagueCache = new Map<string, string>()
 const leagueName = (competitionId: string | undefined): string =>
   (competitionId && leagueCache.get(competitionId)) || 'Unbekannt'
 
-/**
- * Lädt die noch unbekannten Liganamen — **nebenläufig und vorab**.
- *
- * Vorher stand `await leagueName(...)` mitten in der Event-Schleife. Damit lief
- * je unbekanntem Wettbewerb ein eigener Rundlauf, und zwar streng
- * hintereinander: bei kaltem Zwischenspeicher so viele serielle Abrufe, wie es
- * Turniere gibt. Beim Fußball fiel das kaum auf, weil sich die Ligen über die
- * Läufe hinweg wiederholen und der Zwischenspeicher schnell warm war. Tennis
- * bringt dagegen laufend neue Turniere (ITF, Challenger, ATP, WTA) — der
- * Sweep wuchs dadurch auf 7,7 s, und im Gesamtlauf unter Konkurrenz der
- * übrigen fünfzehn Adapter auf 28 s.
- *
- * Ein Deckel auf die Tiefenstufe hätte daran nichts geändert: die kostet für
- * 120 Partien nachgemessen 4,3 s. Die Bremse saß im Sweep.
- */
+/** Lädt unbekannte Liganamen nebenläufig und vorab — seriell in der Schleife kostete das bei Tennis bis zu 28 s. */
 async function warmLeagues(ids: (string | undefined)[]): Promise<void> {
   const missing = [...new Set(ids.filter((id): id is string => id !== undefined && id !== '' && !leagueCache.has(id)))]
   if (!missing.length) return

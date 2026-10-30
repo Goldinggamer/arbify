@@ -5,27 +5,10 @@ import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 
 /**
- * BetConstruct ("swarm") — bei VBET im Einsatz.
- *
- * Der erste Anbieter, der über die WebSocket-Schicht läuft: HTTP-Abrufe
- * liefern hier grundsätzlich keine Quoten. Der Ablauf ist
- *
- *   1. Verbindung zu `wss://eu-swarm-*.betconstruct.com/`
- *   2. `request_session` mit der Site-ID der Marke
- *   3. `get` mit einer Feldauswahl — man beschreibt in `what`, welche Felder
- *      man je Ebene haben will, und filtert in `where`
- *
- * Die Antwort ist ein verschachtelter Baum
- * sport → region → competition → game → market → event, jeweils als Objekt
- * mit ID als Schlüssel. Markttypen sind sauber kodiert (`P1XP2`,
- * `OverUnder`, `Team1OverUnder`), Quoten stehen als `event.price`.
- *
- * Wie bei Winamax gilt: ganzzahlige Linien (`base=3`) bedeuten Einsatzrückgabe
- * beim exakten Ergebnis. Sie werden trotzdem übernommen und in `server/scan.ts`
- * als Push-Linien geführt — siehe dort. Der frühere `isHalfLine`-Filter warf
- * hier allein rund 2.500 Märkte je Durchlauf weg (Linie 1: 1.249×, Linie 2:
- * 697×, Linie 3: 379×), und weil AdmiralBet dieselben Linien behielt, standen
- * sie einander gegenüber, ohne je verglichen zu werden.
+ * BetConstruct „swarm“ (VBET) — Quoten nur über WebSocket: `request_session`,
+ * dann `get` mit Feldauswahl (`what`) und Filter (`where`). Die Antwort ist ein
+ * Baum sport → region → competition → game → market → event. Ganzzahlige
+ * Linien werden übernommen; `scan.ts` markiert sie als `push-line`.
  */
 
 /** BetConstruct-Sportkennungen: 1 ist Fußball, 4 ist Tennis. */
@@ -73,14 +56,8 @@ function periodOf(type: string, name: string): Period {
 }
 
 /**
- * Handicap-Linie aus Heimsicht.
- *
- * BetConstruct legt die Linie **pro Outcome** ab, nicht im Markt: bei einem
- * Heim-Handicap steht am Markt `base=1`, am Heim-Outcome aber `base=-1` und
- * am Auswärts-Outcome `base=+1`. Wer `market.base` nimmt, dreht das
- * Vorzeichen um und vergleicht anschließend ein Heim-Handicap gegen ein
- * Auswärts-Handicap — genau daraus entstand eine vorgetäuschte Arbitrage von
- * angeblich 11 %.
+ * Handicap-Linie aus Heimsicht. Die Linie steht je Outcome; `market.base`
+ * hat das umgekehrte Vorzeichen und erzeugte Scheinfunde.
  */
 function handicapLine(m: BcMarket): number | null {
   const home = Object.values(m.event ?? {}).find((e) => e.type === 'Home' || e.type === 'P1')
@@ -89,17 +66,8 @@ function handicapLine(m: BcMarket): number | null {
 }
 
 /**
- * Tennis-Markttypen.
- *
- * Zwei davon heißen genauso wie im Fußball und bedeuten etwas anderes:
- *
- *   `Handicap`  Fußball → dreiwegiges Tore-Handicap
- *               Tennis  → zweiwegiges **Spiele**-Handicap ("Games Handicap")
- *
- * Ein gemeinsamer Zweig wäre also nicht bloß unsauber, sondern falsch — das
- * Tennis-Handicap hat keine Unentschieden-Seite und zählt in Spielen, nicht in
- * Toren. Daneben führt VBET `Sets Handicap` mit derselben Struktur und einer
- * anderen Einheit; ohne `unit` im Schlüssel fielen beide zusammen.
+ * Tennis. `Handicap` ist hier das zweiwegige **Spiele**-Handicap, nicht das
+ * dreiwegige Tore-Handicap; `Sets Handicap` zählt in Sätzen.
  */
 export function toTennisMarket(m: BcMarket, bookId: string): CanonicalMarket | null {
   const type = m.type ?? ''
@@ -271,13 +239,8 @@ function toSide(e: BcEvent, market: CanonicalMarket): Side | null {
 }
 
 /**
- * Tiefenlink auf die Partie.
- *
- * Die Website adressiert Partien als
- * `/sport-wetten/match/{Sport-Alias}/{Region-Alias}/{Wettbewerb}/{Partie}` —
- * abgelesen aus den Links der Seite selbst, z.B.
- * `/sport-wetten/match/Soccer/England/538/30722944`. Fehlt ein Baustein,
- * bleibt es beim Sportprogramm; ein halber Pfad landet sonst auf 404.
+ * Tiefenlink `/sport-wetten/match/{Sport}/{Region}/{Wettbewerb}/{Partie}`.
+ * Fehlt ein Baustein, bleibt es beim Sportprogramm — ein halber Pfad ergibt 404.
  */
 function eventUrl(base: string, sport: BcSport, region: BcRegion, comp: BcCompetition, game: BcGame): string {
   if (!sport.alias || !region.alias || comp.id == null || game.id == null) return `${base}/sport-wetten`

@@ -3,30 +3,12 @@ import WebSocket from 'ws'
 import { taped } from './tape.ts'
 
 /**
- * Dritte Transportschicht: OpenBets „LiveDoc".
+ * OpenBets „LiveDoc“: SockJS rahmt den WebSocket, darüber STOMP (Dokumente
+ * werden abonniert), als Nutzlast JSON-Patch, große Dokumente roh-deflate-
+ * gepackt. Details: docs/datenbeschaffung.md.
  *
- * Warum eine eigene Schicht neben `RpcSocket`: LiveDoc ist kein JSON-RPC. Es
- * sind **drei** gestapelte Protokolle, und jedes davon bringt eine Eigenheit
- * mit, die der bestehende Sockel nicht kennt.
- *
- *   1. **SockJS** rahmt den WebSocket. Die Adresse trägt eine erfundene
- *      Server- und Sitzungskennung (`/{3 Ziffern}/{8 Zeichen}/websocket`),
- *      und jede Nachricht ist ein Buchstabe plus Nutzlast:
- *        `o` offen · `h` Herzschlag · `a[…]` Nachrichten · `c[…]` geschlossen
- *      Gesendet wird ein JSON-Array von Strings.
- *   2. **STOMP** darüber. Ein Dokument wird nicht angefragt, sondern
- *      *abonniert*: `SUBSCRIBE` auf eine Zieladresse wie `eventmap/upcomingFBL`,
- *      Parameter reisen als Kopfzeilen (`X-Lang`, `X-Size`, `X-Sort`, …).
- *   3. **JSON-Patch** als Nutzlast. Die erste Nachricht ist der volle Stand
- *      (`[{op:"add",path:"",value:{…}}]`), alle weiteren sind Deltas darauf.
- *      Große Dokumente kommen base64-kodiert und roh-deflate-gepackt, erkennbar
- *      am Kopf `is-compressed: true`.
- *
- * Diese Klasse holt **Momentaufnahmen**: abonnieren, ersten Stand abwarten,
- * wieder abbestellen. Für einen Arbitrage-Scanner ist das die richtige Form —
- * der Scheduler fragt ohnehin in festem Takt neu, und ein Dauerabo über
- * hunderte Partien wäre nur Buchhaltung ohne Gewinn. Die *Verbindung* bleibt
- * dabei offen; teuer ist der Handschlag, nicht das Abo.
+ * Geholt werden Momentaufnahmen: abonnieren, ersten Stand abwarten,
+ * abbestellen. Die Verbindung bleibt offen — teuer ist der Handschlag.
  */
 
 type LiveDocOptions = {
@@ -74,13 +56,7 @@ function parseFrame(raw: string): StompFrame {
   return { command: lines[0] ?? '', headers, body }
 }
 
-/**
- * Gepackte Rümpfe auspacken.
- *
- * Der Kopf sagt nur *dass* gepackt wurde, nicht womit. Gemessen ist es roher
- * Deflate ohne zlib-Rahmen; die beiden anderen Varianten bleiben als
- * Rückfallebene stehen, falls der Server das einmal ändert.
- */
+/** Gepackte Rümpfe auspacken. Gemessen roher Deflate; die anderen Varianten sind Rückfallebene. */
 function decodeBody(headers: Record<string, string>, body: string): string {
   if (headers['is-compressed'] !== 'true') return body
   const buf = Buffer.from(body, 'base64')
@@ -97,14 +73,8 @@ function decodeBody(headers: Record<string, string>, body: string): string {
 type PatchOp = { op: string; path: string; value?: unknown }
 
 /**
- * Minimaler JSON-Patch, nur soweit für den ersten Stand nötig.
- *
- * In aller Regel ist die erste Nachricht eine einzige Anweisung
- * `{op:"add", path:"", value:{…}}` — also schlicht das ganze Dokument. Der
- * Rest ist Absicherung für den Fall, dass ein Server den Anfangsstand doch
- * einmal stückelt. Bewusst **kein** vollständiges RFC 6902: `move`, `copy`
- * und `test` kommen im Anfangsstand nicht vor, und eine halbgare
- * Implementierung davon wäre gefährlicher als gar keine.
+ * Minimaler JSON-Patch für den ersten Stand — meist ein einziges
+ * `add` auf den Wurzelpfad. Bewusst kein vollständiges RFC 6902.
  */
 function applyPatch(doc: unknown, ops: PatchOp[]): unknown {
   let result = doc
@@ -146,11 +116,8 @@ export class LiveDocClient {
   }
 
   /**
-   * Eine SockJS-Nachricht ist ein JSON-Array von Strings.
-   *
-   * Der Socket wird ausdrücklich übergeben statt über `this.socket` geholt:
-   * während eines Neuaufbaus zeigt das Feld sonst schon auf die neue
-   * Verbindung, und der Handschlag der alten liefe ins Leere.
+   * Eine SockJS-Nachricht ist ein JSON-Array von Strings. Der Socket wird
+   * übergeben, weil `this.socket` beim Neuaufbau schon auf die neue Verbindung zeigt.
    */
   private send(socket: WebSocket, payload: string): void {
     if (socket.readyState !== WebSocket.OPEN) return

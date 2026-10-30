@@ -1,52 +1,13 @@
 import type { PushConfig } from '../src/types.ts'
 
 /**
- * Versand der Funde aufs Telefon.
+ * Versand der Funde aufs Telefon über ntfy, Pushover oder einen Webhook
+ * (docs/meldungen.md). Der Server ruft hinaus; das Telefon muss den Rechner nie
+ * erreichen.
  *
- * Der Scanner läuft auf dem Rechner, der Nutzer nicht. Eine Arbitrage lebt
- * Minuten — wer sie erst abends auf dem Bildschirm sieht, hat sie verpasst.
- * Ton und Systemmeldung im Browser lösen das nicht: beide brauchen den offenen
- * Tab.
- *
- * ## Warum kein Web Push
- *
- * iOS kann seit 16.4 echte Web-Benachrichtigungen — aber nur für Seiten, die
- * über **gültiges HTTPS** ausgeliefert und zum Home-Bildschirm hinzugefügt
- * wurden. Für einen Scanner, der auf `localhost` im eigenen Netz läuft, hieße
- * das: Domain, Zertifikat, Service-Worker, VAPID-Schlüssel. Viel Aufbau für
- * eine Meldung.
- *
- * Der Weg hier ist umgekehrt und deshalb einfach: **der Server ruft hinaus.**
- * Das Telefon muss den Rechner nie erreichen, es hängt an einem
- * Meldedienst, der die Verbindung offen hält. Kein Portfreigabe, kein
- * dynamisches DNS, kein Zertifikat.
- *
- * ## Die drei Wege
- *
- *   ntfy      quelloffen, kostenlos, kein Konto. Das "Thema" ist der einzige
- *             Schutz — wer es kennt, liest mit. Deshalb muss es eine lange
- *             Zufallszeichenkette sein, kein Wort. Später selbst hostbar.
- *   Pushover  5 $ einmalig, sehr zuverlässig, echtes Konto.
- *   Webhook   alles andere: eigener Dienst, Home Assistant, Shortcuts.
- *
- * ## Woher die Zugangsdaten kommen
- *
- * Zwei Wege, und der aus der Oberfläche hat Vorrang:
- *
- *   1. **Reiter „Telefon"** — im Browser eingetragen, vom Server in
- *      `.arbify-alerts.json` abgelegt. Der normale Weg: einmal eintippen,
- *      danach steht es über Neustarts hinweg.
- *   2. **Umgebungsvariablen** — für Läufe ohne Oberfläche, etwa als Dienst
- *      im Hintergrund.
- *
- * Der Vorrang liegt bei der Oberfläche, weil dort die letzte bewusste
- * Handlung stattfand. Damit das nicht heimlich passiert, meldet
- * `describe()` mit, aus welcher Quelle die Angaben stammen — sonst schickt
- * ein vergessenes `ARBIFY_NTFY_TOPIC` die Funde stillschweigend an ein
- * altes Thema.
- *
- * Das Thema selbst gehört **weder in die Dokumentation noch ins
- * Repository**: es ist bei ntfy der einzige Schutz des Kanals.
+ * Zugangsdaten kommen aus dem Reiter „Telefon“ (`.arbify-alerts.json`) oder
+ * aus Umgebungsvariablen; die Oberfläche hat Vorrang, `describe()` nennt die
+ * aktive Quelle. Das ntfy-Thema ist der einzige Schutz des Kanals.
  */
 
 /** Wie lange auf den Meldedienst gewartet wird, bevor abgebrochen wird. */
@@ -76,14 +37,7 @@ const env = (k: string): string | undefined => {
   return v && v.trim() ? v.trim() : undefined
 }
 
-/**
- * Zugangsdaten aus Oberfläche und Umgebung zusammenführen.
- *
- * Feldweise, nicht als Ganzes: wer den ntfy-Server über eine Variable setzt
- * und das Thema in der Oberfläche einträgt, bekommt beides. Leere Felder aus
- * der Oberfläche zählen als „nicht gesetzt" und fallen auf die Umgebung
- * zurück.
- */
+/** Zugangsdaten feldweise zusammenführen; leere Felder der Oberfläche fallen auf die Umgebung zurück. */
 type Source = 'Oberfläche' | 'Umgebung'
 
 function pick(
@@ -109,14 +63,7 @@ async function post(url: string, init: RequestInit): Promise<void> {
   }
 }
 
-/**
- * ntfy.
- *
- * Veröffentlicht wird über die **JSON-Form**, nicht über Kopfzeilen. Der Grund
- * ist Text: HTTP-Kopfzeilen tragen kein UTF-8, und ein Titel wie
- * "4,8 % · Bayern München" wäre darin entweder zerstört oder müsste umständlich
- * kodiert werden. Im JSON-Rumpf ist das kein Thema.
- */
+/** ntfy über die JSON-Form — Kopfzeilen tragen kein UTF-8. */
 function ntfyTransport(ui?: PushConfig): PushTransport | null {
   const t = pick(ui?.ntfyTopic, 'ARBIFY_NTFY_TOPIC')
   const topic = t.value
@@ -218,14 +165,8 @@ const mask = (s: string): string =>
   s.length <= 10 ? `${s.slice(0, 2)}…` : `${s.slice(0, 4)}…${s.slice(-4)}`
 
 /**
- * Der eingerichtete Weg, oder `null`.
- *
- * `ui.service` entscheidet, wenn die Oberfläche einen Dienst gewählt hat —
- * das ist die ausdrückliche Wahl des Nutzers und schlägt alles andere.
- * Sonst greift `ARBIFY_PUSH`, sonst der erste vollständig konfigurierte.
- *
- * Immer nur **einer**: doppelte Meldungen auf demselben Telefon sind
- * schlimmer als gar keine.
+ * Der eingerichtete Weg oder `null`: die Wahl in der Oberfläche, sonst
+ * `ARBIFY_PUSH`, sonst der erste vollständige. Immer nur einer.
  */
 export function configuredTransport(ui?: PushConfig): PushTransport | null {
   // Ausdrücklich abgeschaltet — auch dann, wenn Umgebungsvariablen gesetzt

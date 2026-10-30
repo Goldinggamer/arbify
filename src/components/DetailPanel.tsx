@@ -358,20 +358,8 @@ function OddsCell({
 }
 
 /**
- * Der Steuer-Hinweis an der einzelnen Wette.
- *
- * Er steht bewusst direkt unter der Einsatzaufteilung: die 5,3 % entscheiden
- * bei einer typischen Arbitrage von 2–4 % über Gewinn und Verlust, und sie
- * fallen je nach Anbieter unterschiedlich an. Wer nur die Prozentzahl oben
- * liest, muss trotzdem sehen, welches der beiden Bücher ihm die Steuer
- * weiterreicht — sonst wundert er sich erst im Wettschein über eine Quote, die
- * nicht zur Anzeige passt.
- *
- * Bewusst ohne eigene Rechnung: die Renditen in dieser App sind reine
- * Quotenwerte. Was am Ende hängen bleibt, hängt am Konto — an Freiwetten, an
- * Aktionen, an der im Wettschein tatsächlich angezeigten Quote. Eine
- * „Rendite nach Steuer", die das nicht kennt, wäre eine Zahl mit falscher
- * Sicherheit.
+ * Steuer-Hinweis an der Wette, direkt unter der Einsatzaufteilung: die 5,3 %
+ * entscheiden bei 2–4 % Rendite über Gewinn und Verlust. Ohne eigene Rechnung.
  */
 function TaxNotice({ opp }: { opp: Opportunity }) {
   const taxed = taxedBooksOf(opp)

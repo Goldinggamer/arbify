@@ -1,30 +1,10 @@
 /**
- * Das Zeitfenster — **eine** Definition für Scanner und Oberfläche.
+ * Das Zeitfenster — eine Definition für Scanner, Oberfläche und Telefonmeldung.
  *
- * Vorher stand es zweimal da: als `WINDOW_HOURS` im Backend (über eine
- * Umgebungsvariable einstellbar) und als fest verdrahtete Konstante in
- * `src/lib/filter.ts`. Die beiden mussten übereinstimmen, und nichts erzwang
- * das. Wäre das Fenster im Backend vergrößert worden, hätte die Oberfläche die
- * zusätzlichen Partien stillschweigend weggefiltert — ohne Fehlermeldung, ohne
- * sichtbaren Grund, denn der Zeitfilter hat keine Bedienfläche.
- *
- * ## Warum 24 Stunden
- *
- * Weit im Voraus stehen die Bücher am weitesten auseinander, dort liegen also
- * rechnerisch die höchsten Renditen. Nur sind das überwiegend **Quotenfehler**,
- * und die werden von den Anbietern storniert, sobald sie auffallen — je früher
- * die Partie liegt, desto mehr Zeit haben sie dafür. Eine Wette, die annulliert
- * wird, ist keine Arbitrage: das Gegenbein steht dann allein da, und aus einem
- * gesicherten Gewinn wird eine offene Wette.
- *
- * Ein Tag Vorlauf ist der Kompromiss: genug Zeit, um beide Beine in Ruhe zu
- * platzieren, und nah genug, dass die Quoten weitgehend abgeglichen sind und
- * ein Fund eher echt als fehlerhaft ist.
- *
- * Der Nebeneffekt ist der eigentliche Gewinn: das Tiefenbudget ist knapp und
- * wird auf die Partien im Fenster verteilt. Weniger Partien heißt, dass jede
- * davon mehr Märkte bekommt — und Vergleichsfläche entsteht in der Tiefe, nicht
- * in der Breite.
+ * 24 Stunden: weiter entfernte Partien zeigen höhere Renditen, das sind aber
+ * meist Quotenfehler, die der Anbieter noch storniert — und eine annullierte
+ * Wette lässt das Gegenbein offen. Nebeneffekt: das Tiefenbudget reicht für
+ * mehr der verbleibenden Partien.
  */
 export const DEFAULT_WINDOW_HOURS = 24
 

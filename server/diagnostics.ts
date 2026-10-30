@@ -1,11 +1,4 @@
-/**
- * Sammelt Märkte, die kein Adapter zuordnen konnte.
- *
- * Nicht gemappte Märkte sind der wichtigste Hinweis darauf, wo Abdeckung
- * fehlt: sie kosten Arbitrage-Chancen, richten aber keinen Schaden an. Der
- * Endpunkt /api/diagnostics zeigt die häufigsten, damit die Mapping-Tabellen
- * gezielt gegen echte Daten erweitert werden können — statt zu raten.
- */
+/** Märkte, die kein Adapter zuordnen konnte — der wichtigste Hinweis, wo Abdeckung fehlt (`/api/diagnostics`). */
 
 const unmapped = new Map<string, { bookmakerId: string; label: string; count: number }>()
 
@@ -21,34 +14,15 @@ export function unmappedReport(limit = 60) {
 }
 
 /**
- * Ein Buchmacher, der für denselben Markt und dieselbe Seite zwei Quoten
- * liefert, hat keine zwei Meinungen — bei ihm sind zwei **verschiedene**
- * Märkte auf denselben Schlüssel gefallen.
- *
- * Genau so entstand der Team-Über/Unter-Fehler: Halbzeit-Märkte von
- * Sportwetten.de landeten unter der Ganzspiel-Kennung, und weil je Seite die
- * höchste Quote gewinnt, ging die Halbzeit-Quote als Ganzspiel-Quote in die
- * Rechnung. Der Bestand sah dabei völlig normal aus — auffällig war nur das
- * Ergebnis, und auch das erst in der Familienstatistik.
- *
- * Diese Zählung macht die Ursache direkt sichtbar. Verworfen wird nichts: die
- * Kollision kann auch von zwei Handelsständen derselben Marke kommen. Sie
- * gehört aber in die Diagnose, bevor jemand nach dem Ergebnis sucht.
+ * Zwei Quoten eines Buchs auf derselben Seite eines Schlüssels heißt: zwei
+ * verschiedene Märkte sind zusammengefallen. Gezählt, nicht verworfen.
  */
 const collisions = new Map<
   string,
   { bookmakerId: string; market: string; count: number; beispiele: string[] }
 >()
 
-/**
- * Zwei Märkte eines Buchs auf einem Schlüssel — immer ein Zuordnungsfehler.
- *
- * `event` ist nicht schmückendes Beiwerk, sondern der Unterschied zwischen
- * „irgendwo bei Betway" und einer Partie, deren Rohdaten man aufrufen kann.
- * Ohne die Angabe war ein seltener Fall (zwei Vorkommen in einem Durchlauf)
- * praktisch nicht zu finden: bis man ihn nachstellen wollte, hatten sich die
- * Quoten geändert und er trat nicht mehr auf.
- */
+/** Kollision vermerken — mit Partie, damit sich ein seltener Fall nachstellen lässt. */
 export function noteCollision(bookmakerId: string, market: string, event?: string): void {
   const key = `${bookmakerId}::${market}`
   const entry = collisions.get(key)

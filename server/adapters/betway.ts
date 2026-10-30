@@ -5,28 +5,10 @@ import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 
 /**
- * Betway.
- *
- * Der SignalR-Hub der Seite existiert, führt aber keine Quoten — er ist ein
- * reiner Benutzer-Kanal (HEARTBEAT, CLIENT_INTERACTION); Quoten-Abos werden
- * mit `MessageRejected` abgelehnt. Der tragfähige Weg ist die Next.js-Seite
- * selbst: mit dem Header `RSC: 1` liefert sie statt HTML den
- * React-Server-Components-Flight-Payload, und darin stehen die Quoten als
- * JSON-Blöcke `{"events":…,"markets":…,"outcomes":…}`.
- *
- * Drei Dinge, die dabei zu beachten sind:
- *
- *  - **Cloudflare.** curl und Node-fetch werden abgewiesen; nötig ist der
- *    TLS-Fingerprint eines echten Chrome, also `impit`.
- *  - **`"$undefined"`.** Der Flight-Payload kodiert `undefined` als
- *    Zeichenkette. Wer das nicht abfängt, bekommt Quoten vom Typ String.
- *  - **Kein stabiler Vertrag.** Das ist interne Seitenmechanik, kein
- *    öffentliches API — das Format kann sich mit jedem Deploy ändern. Der
- *    Parser bleibt deshalb defensiv und liefert im Zweifel nichts statt
- *    Falsches.
- *
- * Über die Listenseiten kommt nur der Hauptmarkt (1X2); weitere Märkte
- * lägen auf den Event-Detailseiten.
+ * Betway — die Next.js-Seite liefert mit Header `RSC: 1` den Flight-Payload,
+ * darin die Quoten als JSON-Blöcke. Braucht `impit` (Cloudflare); `"$undefined"`
+ * steht als Zeichenkette im Payload. Kein öffentlicher Vertrag, deshalb
+ * defensiv. Über die Listenseiten nur der Hauptmarkt.
  */
 
 const HOST = 'https://betway.de'
@@ -48,13 +30,7 @@ const PAGES = [
   '/de/de/sports/live',
 ]
 
-/**
- * Sportarten samt Hauptmarkt.
- *
- * Bei Tennis ist die Siegwette **zweiseitig**, und die Auswahl heißt
- * "Spieler 1" / "Spieler 2" statt "Heim" / "Auswärts" — beides muss stimmen,
- * sonst kommt entweder kein Markt oder keine Seite zustande.
- */
+/** Sportarten samt Hauptmarkt. Tennis ist zweiseitig, die Auswahl heißt „Spieler 1“/„Spieler 2“. */
 const SPORTS: { category: string; sport: Sport; market: CanonicalMarket }[] = [
   {
     category: 'soccer',
@@ -113,11 +89,7 @@ const num = (v: unknown): number | null => {
 }
 
 /**
- * Sammelt alle `{"events":…}`-Blöcke aus dem Flight-Payload.
- *
- * Der Payload ist kein zusammenhängendes JSON, sondern eine Folge von
- * Zeilen mit eingebetteten Objekten. Gesucht wird deshalb nach dem Marker
- * und von dort aus klammerbalanciert ausgeschnitten.
+ * Sammelt alle `{"events":…}`-Blöcke — der Payload ist kein zusammenhängendes JSON, deshalb klammerbalanciert ausschneiden.
  */
 function extractBlocks(payload: string): Block[] {
   const blocks: Block[] = []
@@ -134,14 +106,7 @@ function extractBlocks(payload: string): Block[] {
   return blocks
 }
 
-/**
- * Seitenkennung eines Outcomes.
- *
- * Verlässlich ist `name.coupon` — dort steht "Heim" / "Remis" / "Auswärts".
- * `teamCName` sieht auf den ersten Blick passend aus, enthält aber je nach
- * Seite den Team-Slug ("arsenal") oder gar nichts; wer sich darauf verlässt,
- * bekommt null Treffer. `sortIndex` (1/2/3) dient als Rückfallebene.
- */
+/** Seite eines Outcomes aus `name.coupon` ("Heim"/"Remis"/"Auswärts"), `sortIndex` als Rückfall. */
 function toSide(o: BetwayOutcome): Side | null {
   const coupon = String(clean(o.name?.coupon) ?? '').toLowerCase()
   if (coupon === 'heim' || coupon === 'home') return 'HOME'

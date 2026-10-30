@@ -37,15 +37,7 @@ export function applyFilters(
   filters: Filters,
   settings: Settings,
   sort: SortKey,
-  /**
-   * Anzeigefenster in Millisekunden.
-   *
-   * Kommt vom Aufrufer, weil der Server es kennt und die Oberfläche es von
-   * dort meldet bekommt. Hier stand vorher eine eigene Konstante über sieben
-   * Tage — war das Backend-Fenster größer, filterte die Oberfläche die
-   * zusätzlichen Partien stillschweigend weg, und für diesen Zeitfilter gibt
-   * es keine Bedienfläche, an der man das gesehen hätte.
-   */
+  /** Anzeigefenster in Millisekunden — vom Aufrufer, damit es dem des Servers entspricht. */
   windowMs: number = hoursToMs(DEFAULT_WINDOW_HOURS),
 ): Opportunity[] {
   const allowed = new Set(filters.bookmakers)

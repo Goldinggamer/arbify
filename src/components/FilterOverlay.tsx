@@ -473,13 +473,8 @@ function MarketSection({ filters, onChange }: { filters: Filters; onChange: (f: 
 /* -------------------------------------------------------------- Warnhinweise */
 
 /**
- * Meldungen bei Funden über einer Schwelle.
- *
- * Zwei Wege, beide abschaltbar: ein Zweiklang im Browser und die Systemmeldung
- * (auf macOS oben rechts). Für die Systemmeldung braucht der Browser eine
- * Erlaubnis, und die darf er nur aus einer **Nutzergeste** heraus erfragen —
- * deshalb der Knopf. Derselbe Klick weckt den Audio-Kontext, den Browser ohne
- * Geste angehalten lassen.
+ * Meldungen bei Funden über einer Schwelle: Ton und Systemmeldung im Browser.
+ * Die Erlaubnis gibt es nur per Klick, der zugleich den Audio-Kontext weckt.
  */
 function AlertBlock({
   settings,
@@ -585,15 +580,8 @@ function AlertBlock({
 }
 
 /**
- * Meldung aufs Telefon.
- *
- * Der eine Unterschied zu Ton und Systemmeldung, der alles ändert: hier
- * verschickt **der Server**, nicht der Browser. Der Tab darf zu sein, der
- * Rechner darf gesperrt sein — nur laufen muss der Scanner.
- *
- * Der Meldeweg selbst wird über Umgebungsvariablen eingerichtet und nicht
- * hier: Thema bzw. Schlüssel sind Geheimnisse, die einmal gesetzt werden und
- * sich nie ändern. Diese Fläche zeigt nur, ob es geklappt hat.
+ * Meldung aufs Telefon — verschickt vom Server, der Tab darf zu sein. Den
+ * Meldeweg richtet der Reiter „Telefon“ ein; hier wird nur geschaltet.
  */
 function PushBlock({
   settings,
@@ -688,15 +676,8 @@ const SERVICES: { id: PushConfig['service']; label: string; hint: string }[] = [
 ]
 
 /**
- * Zugangsdaten für den Meldedienst.
- *
- * Sie liegen hier und nicht in einer Umgebungsvariablen, damit sie einmal
- * eingetragen werden und danach stehen bleiben — über `npm run dev` hinweg.
- * Der Server legt sie in `.arbify-alerts.json` ab, die in `.gitignore` steht.
- *
- * Das ntfy-Thema ist standardmäßig verdeckt: es ist das Passwort des Kanals,
- * und ein Screenshot oder eine geteilte Bildschirmsitzung gibt es sonst
- * ungefragt preis.
+ * Zugangsdaten für den Meldedienst — einmal eingetragen, legt der Server sie
+ * in `.arbify-alerts.json` ab. Das ntfy-Thema ist standardmäßig verdeckt.
  */
 function PhoneSection({
   config,

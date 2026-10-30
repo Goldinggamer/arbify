@@ -21,42 +21,16 @@ import {
   type AlertConfig,
 } from './alerts.ts'
 
-/**
- * Arbify-Backend.
- *
- *   GET /api/opportunities  — aktueller Stand für das Frontend
- *   GET /api/scan           — Quoten der heißen Events sofort nachladen
- *   GET /api/scan?full=1    — kompletten Durchlauf erzwingen
- *   GET /api/diagnostics    — Adapter-Status, Match-Quote, verworfene Märkte
- */
+/** Arbify-Backend. Endpunkte siehe README. */
 
-/**
- * Takt: Vorspiel-Quoten bewegen sich in Minuten, nicht in Sekunden.
- *
- * Der frühere Vier-Sekunden-Takt stammte aus der Zeit, als auch Live-Wetten
- * ein Produkt waren. Für Vorspiel bringt er nichts außer Last — Winamax hat
- * beim Testen prompt mit HTTP 403 geantwortet. Zehn Sekunden reichen
- * vollkommen und halten uns aus den Sperren der Anbieter heraus.
- */
+/** Takte. Vorspiel-Quoten bewegen sich in Minuten; zehn Sekunden reichen und halten uns aus den Sperren. */
 const PORT = Number(process.env.PORT ?? 8787)
 const DISCOVERY_MS = Number(process.env.DISCOVERY_INTERVAL_MS ?? 60_000)
 const REFRESH_MS = Number(process.env.REFRESH_INTERVAL_MS ?? 10_000)
 
 /**
- * Zeitfenster: 24 Stunden.
- *
- * Vorher stand hier eine Woche, mit der Begründung, dass die Bücher weit im
- * Voraus am weitesten auseinanderstehen und dort die zweistelligen Renditen
- * liegen. Das stimmt — nur sind das überwiegend **Quotenfehler**, und die
- * werden storniert, sobald sie auffallen. Je weiter die Partie weg ist, desto
- * mehr Zeit hat der Anbieter dafür. Eine annullierte Wette ist keine
- * Arbitrage: das Gegenbein bleibt stehen, und aus dem gesicherten Gewinn wird
- * eine offene Wette.
- *
- * Die Vorgabe steht in `src/lib/window.ts`, damit die Oberfläche nicht mit
- * einer zweiten Zahl danebenliegt. Über `WINDOW_HOURS` bleibt sie einstellbar,
- * und der Wert geht im Schnappschuss an die Oberfläche — sonst würde sie beim
- * Vergrößern des Fensters die zusätzlichen Partien wegfiltern.
+ * Zeitfenster, Vorgabe aus `src/lib/window.ts` (Begründung dort). Der Wert
+ * geht im Schnappschuss an die Oberfläche, damit beide gleich zuschneiden.
  */
 const WINDOW_HOURS = Number(process.env.WINDOW_HOURS ?? DEFAULT_WINDOW_HOURS)
 
@@ -80,13 +54,7 @@ const json = (res: import('node:http').ServerResponse, status: number, body: unk
   res.end(JSON.stringify(body))
 }
 
-/**
- * Rumpf einer Anfrage einlesen.
- *
- * Mit Deckel: der Filter ist ein paar Kilobyte groß, alles darüber ist ein
- * Fehler oder ein Angriff. Der Server hört zwar nur auf `localhost`, aber ein
- * unbegrenzter Puffer ist auch dort keine gute Idee.
- */
+/** Rumpf einer Anfrage einlesen — mit Deckel, der Filter ist nur ein paar Kilobyte groß. */
 const MAX_BODY = 256 * 1024
 
 function readBody(req: import('node:http').IncomingMessage): Promise<string> {
@@ -193,19 +161,8 @@ const server = createServer(async (req, res) => {
 })
 
 /**
- * Hält den Mac wach, solange der Scanner läuft.
- *
- * Gemessen an einem Vormittag: von 57 Minuten schlief der Rechner 50. In der
- * Zeit läuft die Uhr weiter, der Prozess nicht — es wird nicht gescannt, es
- * kommt keine Meldung aufs Telefon, und beim Aufwachen sind die drei
- * Dauerverbindungen tot. Genau das, was die Telefonmeldung eigentlich
- * abschaffen sollte.
- *
- * `-w` bindet `caffeinate` an die eigene Prozesskennung: endet der Scanner —
- * auch durch SIGKILL oder Absturz — endet die Sperre mit ihm. Deshalb braucht
- * es hier kein Aufräumen. `-i` verhindert den Leerlaufschlaf, `-s` den
- * Systemschlaf am Netzteil; der Bildschirm darf weiter ausgehen.
- *
+ * Hält den Mac wach, solange der Scanner läuft — im Ruhezustand wird nicht
+ * gescannt und nichts gemeldet. `-w` bindet die Sperre an diesen Prozess.
  * Abschaltbar über ARBIFY_NO_CAFFEINATE=1.
  */
 function bleibWach(): void {

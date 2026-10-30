@@ -10,30 +10,10 @@ import { configuredTransport, type PushMessage, type PushTransport } from './not
 import { DEFAULT_WINDOW_HOURS, hoursToMs } from '../src/lib/window.ts'
 
 /**
- * Meldungen aufs Telefon — die Entscheidung, **was** gemeldet wird.
- *
- * ## Warum der Filter hier landet
- *
- * Der Nutzer stellt seinen Filter im Browser ein: Buchmacher, Sportarten,
- * Märkte, Quotenspanne, ausgeblendete Warnungen. Der Server kannte davon
- * bisher nichts — er meldet aber, während niemand vor dem Bildschirm sitzt.
- *
- * Ein zweiter, serverseitiger Filter wäre die naheliegende Lösung und die
- * falsche: zwei Implementierungen driften auseinander, und dann meldet das
- * Telefon Funde, die auf dem Bildschirm gar nicht stehen — oder umgekehrt.
- * Beides macht die Meldung wertlos, weil man ihr nicht mehr trauen kann.
- *
- * Stattdessen schickt die Oberfläche ihren Filter an den Server, und hier
- * läuft **dasselbe `applyFilters`** aus `src/lib/filter.ts`. Eine
- * Implementierung, zwei Verbraucher. Möglich ist das, weil die Filterkette
- * reines TypeScript ohne Browser-Aufrufe ist — nachgeprüft.
- *
- * ## Warum die Entscheidung eine reine Funktion ist
- *
- * `decide()` verschickt nichts und liest keine Uhr. Entdopplung, Ruhezeit und
- * Mengenbegrenzung sind genau die Regeln, bei denen ein Fehler entweder
- * nervt (zu viel) oder unsichtbar bleibt (zu wenig) — beides fällt im Betrieb
- * kaum auf. Deshalb sind sie testbar getrennt vom Versand.
+ * Meldungen aufs Telefon — was gemeldet wird. Es läuft dasselbe
+ * `applyFilters` wie in der Oberfläche (`src/lib/filter.ts`), damit das
+ * Telefon nur meldet, was auch auf dem Bildschirm stünde. `decide()` ist rein
+ * (kein Versand, keine Uhr) und damit testbar.
  */
 
 /** Wie lange derselbe Fund nach einer Meldung stumm bleibt. */
@@ -51,24 +31,14 @@ const FORGET_MS = 6 * 60 * 60_000
 
 const STATE_FILE = process.env.ARBIFY_ALERT_FILE ?? '.arbify-alerts.json'
 
-/**
- * Dasselbe Zeitfenster wie im Scanner und in der Oberfläche.
- *
- * Ohne diesen Zuschnitt würde die Telefonmeldung Partien melden, die auf dem
- * Bildschirm gar nicht stehen — und genau das soll die gemeinsame Filterkette
- * verhindern.
- */
+/** Dasselbe Zeitfenster wie Scanner und Oberfläche. */
 const WINDOW_MS = hoursToMs(Number(process.env.WINDOW_HOURS ?? DEFAULT_WINDOW_HOURS))
 
 export type AlertConfig = {
   filters: Filters
   settings: Settings
   /**
-   * Zugang zum Meldedienst, aus dem Reiter „Telefon".
-   *
-   * Liegt hier statt in einer Umgebungsvariablen, damit der Nutzer ihn
-   * einmal einträgt und nicht bei jedem `npm run dev` erneut. Die Datei
-   * steht in `.gitignore` — das ntfy-Thema ist ein Geheimnis.
+   * Zugang zum Meldedienst aus dem Reiter „Telefon“. Die Datei steht in `.gitignore` — das ntfy-Thema ist ein Geheimnis.
    */
   push?: PushConfig
   /** Wann die Oberfläche das zuletzt geschickt hat. */
@@ -94,13 +64,7 @@ type Decision = {
   next: AlertState
 }
 
-/**
- * Liegt `now` in der Nachtruhe?
- *
- * Über Mitternacht hinweg gedacht: 23 bis 8 heißt 23, 0, …, 7. Sind Beginn und
- * Ende gleich, ist die Ruhezeit leer und nicht etwa ganztägig — sonst würde
- * eine versehentlich gleiche Einstellung jede Meldung für immer verschlucken.
- */
+/** Liegt `now` in der Nachtruhe? Über Mitternacht (23–8); gleicher Beginn und Ende heißt keine Ruhezeit. */
 export function inQuietHours(now: Date, from: number, to: number): boolean {
   const h = now.getHours()
   if (from === to) return false
@@ -164,13 +128,7 @@ export function decide(
 const BOOK_NAME = new Map(BOOKMAKERS.map((b) => [b.id, b.name]))
 const bookName = (id: string): string => BOOK_NAME.get(id) ?? id
 
-/**
- * Die Meldung, wie sie auf dem Sperrbildschirm steht.
- *
- * Sie muss ohne Nachschlagen entscheidbar sein: Rendite, Partie, Markt und
- * **beide Beine mit Quote und Buchmacher**. Wer erst die App öffnen muss, um
- * zu sehen, wo er setzen soll, hat die Quote schon verloren.
- */
+/** Die Meldung für den Sperrbildschirm: Rendite, Partie, Markt und beide Beine mit Quote und Buchmacher. */
 export function formatMessage(o: Opportunity): PushMessage {
   const percent = arbPercentOf(o)
   const start = new Date(o.startTime).toLocaleString('de-DE', {
@@ -283,15 +241,7 @@ export function setAlertConfig(next: AlertConfig): void {
   persist()
 }
 
-/**
- * Der aktuell gültige Meldeweg.
- *
- * Bewusst **nicht** gemerkt: die Zugangsdaten kommen jetzt aus der Oberfläche
- * und können sich jederzeit ändern. Ein einmal aufgelöster Transport würde
- * nach dem Ändern des Themas weiter an das alte schicken — und weil dort
- * niemand zuhört, sähe das aus wie „es kommt nichts an", ohne Fehlermeldung.
- * Das Auflösen kostet nichts, es liest nur Felder.
- */
+/** Der aktuelle Meldeweg — bewusst nicht gemerkt, damit ein geändertes Thema sofort gilt. */
 function transportNow(): PushTransport | null {
   load()
   return configuredTransport(config?.push)

@@ -6,36 +6,17 @@ import { num } from './labels.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 
 /**
- * INSIC-Plattform — bei Sportwetten.de im Einsatz.
- *
- * Der angenehmste Datensatz im ganzen Projekt: eine einzige Antwort enthält
- * Events, Märkte, Quoten und den Kategoriebaum, alles sauber typisiert
- * (`3WAY`, `OVER_UNDER`, `TOTALS_HOME_TEAM`, …) — kein Raten über deutsche
- * Marktnamen nötig. Und es gibt `betradar_id`, also die Sportradar-Match-ID
- * für den exakten Join.
- *
- * Der Adapter ist über `base` parametrisiert; andere INSIC-Mandanten lassen
- * sich damit ergänzen, sobald ihre Hosts bekannt sind.
+ * INSIC (Sportwetten.de) — eine Antwort enthält Events, Märkte, Quoten und
+ * Kategoriebaum, sauber typisiert (`3WAY`, `OVER_UNDER`, …), mit `betradar_id`.
  */
 
 const OPTS = { transport: 'impit' as const, minIntervalMs: 200 }
 const PAGE_ROWS = 200
 
 /**
- * Sortierung der Ereignisliste — **stabil**, nicht nach Beliebtheit.
- *
- * Hier stand `sportsStandard`. Das ist die Reihenfolge der Website und
- * bewegt sich mit den Quoten; die Blätterung über `offset` greift damit in
- * eine Liste, die sich unter ihr verschiebt. Nachgemessen an einem
- * vollständigen Durchlauf über 1.725 Partien:
- *
- *   sportsStandard   1.725 geliefert, 1.703 eindeutig  →  22 doppelt, 22 fehlend
- *   id               1.725 geliefert, 1.725 eindeutig  →   0 doppelt,  0 fehlend
- *
- * Die Dopplungen waren sichtbar — sie standen als Kollisionen in der
- * Diagnose. Die **22 fehlenden Partien** waren es nicht: ein Event, das
- * zwischen zwei Seitenabrufen nach hinten rutscht, wird schlicht übersprungen
- * und taucht nirgends als Verlust auf.
+ * Stabile Sortierung nach `id`. Die Website-Reihenfolge verschiebt sich mit
+ * den Quoten, und die Blätterung über `offset` lieferte dann Partien doppelt
+ * oder übersprang sie still.
  */
 const SORT = 'id'
 
@@ -77,20 +58,9 @@ type InsicResponse = {
 }
 
 /**
- * Die Periode steht nicht verlässlich im `period`-Feld — dort bedeutet "1"
- * das gesamte Spiel und nicht die erste Halbzeit. Die Beschriftung ist
- * eindeutig, aber **nicht einheitlich**: derselbe Anbieter schreibt mal
- * „1. Halbzeit Über/Unter", mal „1. HZ Heimteam Über/Unter".
- *
- * Die Kurzform zu übersehen war teuer. `TOTALS_HOME_TEAM` und
- * `TOTALS_AWAY_TEAM` benutzen ausschließlich „1. HZ" — 1.467 Märkte, die
- * damit als Gesamtspiel durchgingen und im Bestand auf denselben Schlüssel
- * fielen wie die echten Ganzspiel-Märkte. Weil die Auswertung je Seite die
- * höchste Quote nimmt, gewann dort regelmäßig das Halbzeit-Über (Über 0,5
- * Gastteam: 3,00 in der Halbzeit gegen 1,75 im ganzen Spiel) und wurde gegen
- * das Ganzspiel-Unter eines anderen Buchs gerechnet. Das ergab implizite
- * Summen von 66–90 % — die vermeintlichen „Phantom-Arbitragen" bei
- * Team-Über/Unter, wegen derer die Familie vom Vergleich ausgeschlossen war.
+ * Abschnitt aus der Beschriftung — `period` "1" heißt hier ganzes Spiel. Die
+ * Kurzform „1. HZ“ (bei Team-Totals) muss mit: übersehen landeten Halbzeit-
+ * Märkte als Ganzspiel im Bestand und ergaben Scheinfunde.
  */
 function periodOf(label: string): Period {
   const l = label.toLowerCase()
@@ -106,14 +76,7 @@ function handicapOf(special: string | undefined): number | null {
   return Number(m[1]) - Number(m[2])
 }
 
-/**
- * Tennis-Markttypen.
- *
- * Der angenehmste Teil des Anbieters: die Typen sind ausgeschrieben und
- * trennen von sich aus, was anderswo verwechselbar ist — `TOTAL_SETS` gegen
- * `TOTAL_GAMES`, `POINTS_SPREADS_SETS` gegen `POINTS_SPREADS_GAMES`. Die
- * Satznummer steht bei `SET` im `special_value`, nicht im Label.
- */
+/** Tennis: Typen trennen Sätze und Spiele selbst; die Satznummer steht bei `SET` im `special_value`. */
 function toTennisMarket(m: InsicMarket): CanonicalMarket | null {
   const type = (m.type ?? '').toUpperCase()
   const spec = m.special_value ?? ''
@@ -262,15 +225,7 @@ function makeAdapter(tenant: Tenant): BookmakerAdapter {
     async fetchEvents(ctx: AdapterContext): Promise<RawEvent[]> {
       const cutoff = Date.now() + ctx.windowMs
       const out: RawEvent[] = []
-      /**
-       * Bereits gelieferte Event-IDs.
-       *
-       * Zweite Sicherung hinter der stabilen Sortierung: jede Blätterung über
-       * `offset` läuft über eine Liste, die sich zwischen zwei Abrufen ändern
-       * kann. Ein doppelt geliefertes Event legt in `server/scan.ts` zwei
-       * Quoten auf dieselbe Seite desselben Schlüssels — genau die Dopplung,
-       * die dort als Kollision gemeldet wird.
-       */
+      /** Bereits gelieferte Event-IDs — zweite Sicherung gegen Dopplungen beim Blättern. */
       const gesehen = new Set<string>()
       let offset = 0
       let total = Infinity

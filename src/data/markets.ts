@@ -1,9 +1,6 @@
 /**
- * Sportarten und Markt-Familien.
- *
- * Der Filter arbeitet auf Familien, nicht auf Anzeigenamen: "Über/Unter 2.5"
- * und "Über/Unter 3.5" sind zwei Märkte, aber eine Filteroption. Die IDs sind
- * dieselben wie im Backend (server/types.ts, MarketType).
+ * Sportarten und Marktfamilien. Der Filter arbeitet auf Familien; die IDs
+ * sind dieselben wie `MarketType` in `server/types.ts`.
  */
 
 /**
@@ -25,26 +22,9 @@ export const SPORTS = [
 export const ALL_SPORT_IDS: string[] = SPORTS.map((s) => s.id)
 
 /**
- * Jede Familie gehört zu bestimmten Sportarten.
- *
- * Das ist nicht nur Aufräumen: ohne die Zuordnung stünden im Marktfilter
- * dauerhaft Optionen, die für die gewählte Sportart nie ein Ergebnis liefern
- * können.
- *
- * Die Zuordnung folgt einer Regel, nicht dem Gefühl — **kann es ein
- * Unentschieden geben?**
- *
- *   dreiseitig (1X2, EH)  nur wo ein Remis möglich ist. Im Basketball,
- *                         Eishockey und American Football ist es das
- *                         ausschließlich in der regulären Spielzeit; genau
- *                         darum führen die Bücher dort beides nebeneinander.
- *                         Tennis, Volleyball und Darts spielen immer aus.
- *   zweiseitig (2WAY, AH) überall, wo eine Partie zwingend einen Sieger hat.
- *                         Fußball fehlt hier, weil kein angebundener Anbieter
- *                         asiatische Handicaps für Fußball liefert.
- *
- * Zu großzügig kostet eine tote Auswahlbox, zu knapp verbirgt echte Wetten —
- * im Zweifel also lieber aufnehmen.
+ * Welche Familien es je Sportart geben kann — nach der Regel „kann es ein
+ * Unentschieden geben?“: dreiseitig nur dort, zweiseitig, wo es zwingend einen
+ * Sieger gibt. Im Zweifel aufnehmen.
  */
 const ALL: string[] = SPORTS.map((s) => s.id)
 

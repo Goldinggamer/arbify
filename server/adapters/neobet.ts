@@ -5,25 +5,10 @@ import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 
 /**
- * NEO.bet.
- *
- * Der einfachste Anbieter im ganzen Feld: ein einziger offener Endpunkt,
- * `/.sportsbet/program/matches`, liefert das komplette Vorspiel-Programm
- * samt Quoten in einem Rutsch — kein Login, kein Cookie, kein Bot-Schutz,
- * keine Tiefenstufe nötig. Die Parameter `language`, `license`, `market`
- * und `matchCount` aus dem Netzwerkmitschnitt der Seite filtern nur die
- * Startseiten-Kacheln; ohne sie kommt ohnehin alles.
- *
- * Aufbau je Partie:
- *   { id: "NEO|FB-3348019", begin, sportLabel, league, home, away,
- *     betmarkets: [{ key, bettingType, odds: [{ key, outcome, odds }],
- *                    handicap?, boundary? }] }
- *
- * Die Marktkennung trägt die Spielabschnitte im Namen: `Goal_RT_…` ist die
- * reguläre Spielzeit, `Goal_HT1_…` die erste Halbzeit. Entscheidend für die
- * Zuordnung ist aber `bettingType`, nicht der Schlüssel — denn `MatchWin`
- * und `Handicap` teilen sich beide den Schlüssel `Goal_RT_HC3W(…)`, die
- * Siegwette ist schlicht das Handicap mit Wert 0.
+ * NEO.bet — ein offener Endpunkt `/.sportsbet/program/matches` liefert das
+ * ganze Vorspiel-Programm samt Quoten, keine Tiefenstufe. Zugeordnet wird über
+ * `bettingType`, nicht über den Schlüssel: Siegwette und Handicap teilen
+ * `Goal_RT_HC3W(…)`.
  */
 
 const URL_BASE = 'https://neobet.de/.sportsbet/program/matches?language=de&license=DE'
@@ -67,16 +52,7 @@ const slug = (s: string): string =>
     .replace(/[^A-Za-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
 
-/**
- * Tiefenlink auf die Partie.
- *
- * Die Website adressiert Partien als
- * `/de/Sportwetten/Heute/{Datum}-{Heim}-vs-{Gast}-{Nummer}-{Sportkürzel}-NEO`,
- * abgelesen aus ihren eigenen Links, z.B.
- * `…/Heute/2026-09-06-Botafogo-RJ-vs-Palmeiras-SP-4032325-FB-NEO`. Die
- * Kennung im Feed ist dieselbe Nummer in anderer Reihenfolge:
- * `NEO|FB-4032325`. Lässt sie sich nicht zerlegen, bleibt es beim Tagesprogramm.
- */
+/** Tiefenlink `/de/Sportwetten/Heute/{Datum}-{Heim}-vs-{Gast}-{Nummer}-{Sport}-NEO`; sonst das Tagesprogramm. */
 export function eventUrl(id: string, begin: string, home: string, away: string): string {
   const m = /^NEO\|([A-Z]+)-(\d+)$/.exec(id)
   const day = begin.slice(0, 10)
@@ -92,15 +68,7 @@ function periodOf(key: string): Period | null {
   return null
 }
 
-/**
- * Tennis — eigene Schlüsselform.
- *
- * Die Fußball-Schlüssel tragen den Spielabschnitt zwischen Unterstrichen
- * (`Goal_RT_…`). Tennis benutzt stattdessen `Set_MATCH_HC2W(0.0)`: vorn steht
- * die **Einheit** (Sätze), in der Mitte der Abschnitt. Weil `periodOf` weder
- * `_RT_` noch `_HT1_` findet, gab es dort `null` — und damit fiel bei NEO.bet
- * jeder einzelne Tennismarkt heraus, ohne je in der Diagnose aufzutauchen.
- */
+/** Tennis-Schlüssel haben eine eigene Form (`Set_MATCH_HC2W(0.0)`: Einheit vorn, Abschnitt in der Mitte). */
 function toTennisMarket(m: NbMarket): CanonicalMarket | null {
   if (!/_MATCH_/.test(m.key)) return null
   // `Set_…` heißt: die Linie zählt in Sätzen.
@@ -152,13 +120,7 @@ function toSide(outcome: string): Side | null {
   }
 }
 
-/**
- * Wettart → kanonischer Markt.
- *
- * Gibt `null` zurück, wenn der Typ unbekannt ist. Nicht raten: eine falsch
- * zugeordnete Wettart erzeugt Scheinarbitrage, ein fehlender Markt kostet
- * nur Vergleichsfläche.
- */
+/** Wettart → Markt; `null` für Unbekanntes — nicht raten. */
 function toMarket(m: NbMarket, sport: Sport = 'FOOTBALL'): CanonicalMarket | null {
   if (sport === 'TENNIS') return toTennisMarket(m)
 

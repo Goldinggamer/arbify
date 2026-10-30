@@ -1,11 +1,6 @@
 /**
- * Benachrichtigung, wenn ein Fund eine Schwelle überschreitet.
- *
- * Der Scanner fragt im Zwei-Sekunden-Takt. Ohne Gedächtnis würde derselbe Fund
- * also alle zwei Sekunden erneut klingeln — deshalb trennt dieses Modul die
- * **Auswahl** (welcher Fund ist neu?) von der **Ausgabe** (Ton, Systemmeldung).
- * Die Auswahl ist eine reine Funktion und getestet; nur die Ausgabe hängt am
- * Browser.
+ * Benachrichtigung im Browser bei Funden über der Schwelle. Die Auswahl
+ * (welcher Fund ist neu?) ist rein und getestet, nur die Ausgabe hängt am Browser.
  */
 
 export type AlertCandidate = {
@@ -16,16 +11,8 @@ export type AlertCandidate = {
 }
 
 /**
- * Welche Funde neu über der Schwelle liegen.
- *
- * `alerted` ist die Menge der Funde, die beim letzten Aufruf schon über der
- * Schwelle lagen. Zurück kommt neben den frischen Funden die **neue** Menge:
- * Funde, die inzwischen unter die Schwelle gefallen oder ganz verschwunden
- * sind, fallen daraus heraus.
- *
- * Das ist bewusst so: eine Quote, die wegläuft und später wiederkommt, ist ein
- * neuer Anlass. Ein Fund, der zwanzig Minuten stabil über der Schwelle steht,
- * ist es nicht.
+ * Welche Funde neu über der Schwelle liegen. Fällt ein Fund darunter oder
+ * verschwindet, fällt er aus `alerted` — kommt er wieder, ist das ein neuer Anlass.
  */
 export function selectAlerts(
   candidates: AlertCandidate[],
@@ -42,16 +29,7 @@ export function selectAlerts(
 
 /* ------------------------------------------------------------------ Ausgabe */
 
-/**
- * Ein kurzer Zweiklang über Web Audio.
- *
- * Bewusst keine Audiodatei: die müsste ausgeliefert, gecacht und im Zweifel
- * vom Browser erst geladen werden, bevor der erste Ton kommt. Zwei Sinustöne
- * sind sofort da und kosten nichts.
- *
- * Der Kontext wird erst beim ersten Klingeln erzeugt und dann behalten —
- * Browser begrenzen die Zahl gleichzeitiger AudioContexts.
- */
+/** Kurzer Zweiklang über Web Audio, ohne Audiodatei. Der Kontext wird einmal erzeugt und behalten. */
 let audio: AudioContext | null = null
 
 const context = (): AudioContext | null => {
@@ -97,13 +75,7 @@ export type NotificationState = 'default' | 'granted' | 'denied' | 'unsupported'
 export const notificationState = (): NotificationState =>
   typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
 
-/**
- * Fragt die Erlaubnis für Systemmeldungen.
- *
- * Muss aus einer Nutzergeste heraus laufen — sonst lehnen Browser die Anfrage
- * ohne Rückfrage ab. Deshalb hängt sie an einem Knopf und nicht am Laden der
- * Seite.
- */
+/** Fragt die Erlaubnis für Systemmeldungen — nur aus einer Nutzergeste heraus möglich. */
 export async function requestNotifications(): Promise<NotificationState> {
   if (typeof Notification === 'undefined') return 'unsupported'
   if (Notification.permission !== 'default') return Notification.permission
@@ -114,13 +86,7 @@ export async function requestNotifications(): Promise<NotificationState> {
   }
 }
 
-/**
- * Zeigt die Systemmeldung — auf macOS oben rechts.
- *
- * Bei mehreren frischen Funden gibt es **eine** Meldung, nicht fünf: das
- * Betriebssystem stapelt sie sonst und der Nutzer wischt sie ungelesen weg.
- * `tag` sorgt dafür, dass eine ältere Meldung ersetzt statt ergänzt wird.
- */
+/** Zeigt eine Systemmeldung für alle frischen Funde; `tag` ersetzt eine ältere statt zu stapeln. */
 export function showAlert(fresh: AlertCandidate[]): void {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   if (!fresh.length) return

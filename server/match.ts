@@ -3,25 +3,12 @@ import { INDIVIDUAL_SPORTS, sportFromLabel } from './types.ts'
 import { playerMatch } from './players.ts'
 
 /**
- * Führt dasselbe Event über mehrere Buchmacher zusammen.
+ * Führt dieselbe Partie über Buchmacher zusammen (docs/matching-und-maerkte.md).
  *
- * Das ist die fehleranfälligste Stelle des ganzen Systems: wer hier zwei
- * verschiedene Partien zusammenwirft — oder dieselbe Partie falsch herum —
- * bekommt eine Arbitrage angezeigt, die es nicht gibt.
- *
- * Zwei Schritte:
- *
- *  1. Gruppieren. Bevorzugt über die Sportradar-Match-ID; alle drei
- *     Pilot-Anbieter liefern sie (Tipico `sportRadarMatchId`, Betano
- *     `betRadarId`, bwin `addons.betRadar`). Nur wenn sie fehlt, greift der
- *     Fallback über normalisierte Teamnamen plus Anstoßzeit (±20 Minuten).
- *
- *  2. Ausrichten. Buchmacher sind sich nicht einig, wer Heimmannschaft ist:
- *     bwin führt "Cusco FC – Universitario", Tipico dieselbe Partie als
- *     "Universitario – Cusco FC". HOME und AWAY sind also relativ zur
- *     jeweiligen Quelle. Ohne Korrektur wird die Heimquote des einen gegen
- *     die Heimquote des anderen gerechnet — und das ergibt Renditen von
- *     angeblich 45 %, die in Wahrheit nur ein Vorzeichenfehler sind.
+ *  1. Gruppieren: exakt über die Sportradar-ID, sonst über normalisierte
+ *     Teamnamen plus Anstoßzeit (±20 Minuten).
+ *  2. Ausrichten: Bücher sind sich nicht einig, wer Heim ist. Ohne Korrektur
+ *     liefe Heimquote gegen Heimquote — Scheinrenditen von 45 %.
  */
 
 const STOPWORDS = new Set([
@@ -115,13 +102,8 @@ function flipOutcome(o: RawOutcome): RawOutcome {
 }
 
 /**
- * Wie zwei Bezeichnungen desselben Teilnehmers verglichen werden.
- *
- * Bei Vereinen zählt die Überlappung der Wortmengen. Bei **Einzelsportlern**
- * führt das in die Irre, weil die Bücher Vornamen abkürzen: "Alcaraz C." und
- * "Carlos Alcaraz" teilen genau ein Wort und kämen auf 0,50 — unter der
- * Andockschwelle. Und Geschwister wären überhaupt nicht auseinanderzuhalten.
- * Siehe `server/players.ts`.
+ * Vergleich zweier Teilnehmernamen: Vereine über Wortmengen, Einzelsportler
+ * über `server/players.ts` ("Alcaraz C." gegen "Carlos Alcaraz").
  */
 const isIndividual = (sport: string): boolean => {
   const s = sportFromLabel(sport)
@@ -129,12 +111,7 @@ const isIndividual = (sport: string): boolean => {
 }
 
 /**
- * Sportart als Schlüsselbestandteil — Gruppen dürfen sich nie über Sportarten
- * hinweg mischen.
- *
- * Der Anzeigename selbst ist der Schlüssel, nicht eine Abkürzung daraus. Damit
- * bekommt auch eine Sportart, die `sportFromLabel` nicht kennt, ihren eigenen
- * Raum, statt mit allem Unbekannten in einen Topf zu fallen.
+ * Sportart im Schlüssel — Gruppen mischen sich nie über Sportarten; auch eine unbekannte bekommt ihren eigenen Raum.
  */
 const sportKey = (sport: string): string => sportFromLabel(sport) ?? `?${sport}`
 
@@ -154,14 +131,8 @@ function orientationOf(src: RawEvent, home: string, away: string): Orientation {
 const MATCH_WINDOW_MS = 20 * 60 * 1000
 
 /**
- * Schwelle für das tolerante Andocken.
- *
- * Gefordert wird sie von **beiden** Seiten einzeln, nicht von der Summe. Das
- * ist der ganze Trick: LeoVegas führt eSports-Partien als "Barcelona
- * (Int1liGenT) vs Real Madrid (Terry14)". Über die Summe zieht das eine
- * starke Seite ("barcelona") durch, obwohl die andere überhaupt nicht passt —
- * und schon rechnet der Scanner FIFA-Quoten gegen echten Fußball. Über das
- * Minimum fällt genau dieser Fall durch.
+ * Schwelle für das tolerante Andocken — für **beide** Teams einzeln, nicht
+ * die Summe. Sonst zöge "Barcelona (Int1liGenT) vs …" (eSports) echten Fußball an.
  */
 const DOCK_THRESHOLD = 0.75
 

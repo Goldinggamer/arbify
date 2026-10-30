@@ -85,14 +85,8 @@ export type Filters = {
 }
 
 /**
- * Zugang zum Meldedienst.
- *
- * Bewusst **getrennt** von `Settings`: das hier sind Geheimnisse. Das
- * ntfy-Thema ist der einzige Schutz des Kanals — wer es kennt, liest jeden
- * Fund mit und kann obendrein selbst Meldungen an das Telefon schicken.
- * Deshalb liegt es nicht in der Dokumentation und nicht im Repository, sondern
- * nur lokal: im Browser und in der `.arbify-alerts.json` des Servers, die in
- * `.gitignore` steht.
+ * Zugang zum Meldedienst — getrennt von `Settings`, weil es Geheimnisse sind.
+ * Liegt nur lokal (Browser, `.arbify-alerts.json`), nie im Repository.
  */
 export type PushConfig = {
   /** `off` heißt: kein Versand, auch wenn Zugangsdaten hinterlegt sind. */
@@ -129,23 +123,9 @@ export type Settings = {
   alertSound: boolean
   /** Systemmeldung — auf macOS oben rechts */
   alertDesktop: boolean
-  /**
-   * Meldung aufs Telefon, verschickt vom **Server**.
-   *
-   * Anders als Ton und Systemmeldung braucht sie keinen offenen Tab: der
-   * Scanner ruft von sich aus beim Meldedienst an. Der Weg dorthin wird über
-   * Umgebungsvariablen eingerichtet (siehe `server/notify.ts`); dieser Schalter
-   * sagt nur, ob überhaupt gemeldet werden soll.
-   */
+  /** Meldung aufs Telefon, verschickt vom Server; eingerichtet im Reiter „Telefon“. */
   alertPush: boolean
-  /**
-   * Nachtruhe. Innerhalb dieser Stunden wird nichts aufs Telefon geschickt.
-   *
-   * Bewusst **ohne** Nachholen: ein Fund, der um drei Uhr entsteht und um acht
-   * noch steht, wird um acht gemeldet — einer, der zwischendurch weg ist,
-   * gar nicht. Eine Arbitrage von vor fünf Stunden ist keine Nachricht mehr,
-   * sondern Lärm.
-   */
+  /** Nachtruhe: in diesen Stunden geht nichts aufs Telefon, und nachgeholt wird nichts. */
   alertQuiet: boolean
   /** Beginn der Nachtruhe, volle Stunde 0–23 */
   quietFrom: number
