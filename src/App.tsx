@@ -85,14 +85,17 @@ const STORAGE_KEY = 'arbify.state.v4'
  */
 const PUSH_KEY = 'arbify.push.v1'
 
-function loadPushConfig(): PushConfig {
+/** Liest einen JSON-Wert aus localStorage; fehlt er oder ist er kaputt: `undefined`. */
+function readJson(key: string): any {
   try {
-    const raw = localStorage.getItem(PUSH_KEY)
-    return raw ? { ...EMPTY_PUSH_CONFIG, ...JSON.parse(raw) } : EMPTY_PUSH_CONFIG
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : undefined
   } catch {
-    return EMPTY_PUSH_CONFIG
+    return undefined
   }
 }
+
+const loadPushConfig = (): PushConfig => ({ ...EMPTY_PUSH_CONFIG, ...readJson(PUSH_KEY) })
 
 /** Ist überhaupt nichts eingetragen? Dann darf der Server-Stand gewinnen. */
 const isBlank = (p: PushConfig): boolean =>
@@ -103,24 +106,10 @@ const isBlank = (p: PushConfig): boolean =>
   !p.webhookUrl
 
 function loadStored<T extends object>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw)
-    return parsed[key] ? { ...fallback, ...parsed[key] } : fallback
-  } catch {
-    return fallback
-  }
+  const stored = readJson(STORAGE_KEY)?.[key]
+  return stored ? { ...fallback, ...stored } : fallback
 }
 
-/**
- * Entfernt Buchmacher und Märkte aus dem gespeicherten Stand, die es nicht
- * mehr gibt.
- *
- * Ohne das würde ein Anbieter, der aus der Liste fliegt, dauerhaft als
- * "aktiver Filter" gezählt — der Nutzer sieht ein Filter-Abzeichen und
- * findet keine Einstellung, die es erklärt.
- */
 /**
  * Welche Sportarten der gespeicherte Stand kannte.
  *
@@ -136,16 +125,16 @@ function loadStored<T extends object>(key: string, fallback: T): T {
 const SPORTS_BEFORE = ['Fußball', 'Tennis']
 
 function loadSportsKnown(): string[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return [...ALL_SPORT_IDS]
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed?.sportsKnown) ? parsed.sportsKnown : SPORTS_BEFORE
-  } catch {
-    return [...ALL_SPORT_IDS]
-  }
+  const parsed = readJson(STORAGE_KEY)
+  if (parsed === undefined) return [...ALL_SPORT_IDS]
+  return Array.isArray(parsed?.sportsKnown) ? parsed.sportsKnown : SPORTS_BEFORE
 }
 
+/**
+ * Entfernt Buchmacher und Märkte aus dem gespeicherten Stand, die es nicht
+ * mehr gibt — sonst zählt ein entfernter Anbieter dauerhaft als „aktiver
+ * Filter“, ohne dass eine Einstellung es erklärt.
+ */
 function sanitizeFilters(f: Filters): Filters {
   const knownBooks = new Set(BOOKMAKERS.map((b) => b.id))
   const knownMarkets = new Set(ALL_MARKET_IDS)
@@ -322,6 +311,8 @@ export default function App() {
     }
   }, [results, settings])
 
+  const setBankroll = (bankroll: number) => setSettings((s) => ({ ...s, bankroll }))
+
   const refresh = async () => {
     setRefreshing(true)
     try {
@@ -344,7 +335,7 @@ export default function App() {
       <Header
         count={results.length}
         bankroll={settings.bankroll}
-        onBankrollChange={(bankroll) => setSettings((s) => ({ ...s, bankroll }))}
+        onBankrollChange={setBankroll}
         search={filters.search}
         onSearchChange={(search) => setFilters((f) => ({ ...f, search }))}
         activeFilterCount={countActiveFilters(filters, DEFAULT_FILTERS)}
@@ -404,7 +395,7 @@ export default function App() {
         <DetailPanel
           opp={selected}
           settings={settings}
-          onBankrollChange={(bankroll) => setSettings((s) => ({ ...s, bankroll }))}
+          onBankrollChange={setBankroll}
         />
       </div>
 

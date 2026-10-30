@@ -216,12 +216,7 @@ function SportsbookSection({ filters, onChange }: { filters: Filters; onChange: 
     })
   }, [q, tag])
 
-  const toggle = (id: string) =>
-    onChange({
-      bookmakers: filters.bookmakers.includes(id)
-        ? filters.bookmakers.filter((x) => x !== id)
-        : [...filters.bookmakers, id],
-    })
+  const toggle = (id: string) => onChange({ bookmakers: toggleIn(filters.bookmakers, id) })
 
   return (
     <div>
@@ -286,13 +281,7 @@ function SportsbookSection({ filters, onChange }: { filters: Filters; onChange: 
                   {b.licensedSince && <span>seit {new Date(b.licensedSince).toLocaleDateString('de-DE')}</span>}
                 </div>
               </div>
-              <span
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border ${
-                  on ? 'border-accent bg-accent text-ink' : 'border-line'
-                }`}
-              >
-                {on && <IconCheck className="h-3 w-3" />}
-              </span>
+              <CheckBox on={on} />
             </button>
           )
         })}
@@ -411,12 +400,7 @@ function PercentageSection({ filters, onChange }: { filters: Filters; onChange: 
  * Möglichkeit sie zu trennen war die Volltextsuche.
  */
 function SportSection({ filters, onChange }: { filters: Filters; onChange: (f: Partial<Filters>) => void }) {
-  const toggle = (id: string) =>
-    onChange({
-      sports: filters.sports.includes(id)
-        ? filters.sports.filter((x) => x !== id)
-        : [...filters.sports, id],
-    })
+  const toggle = (id: string) => onChange({ sports: toggleIn(filters.sports, id) })
 
   return (
     <div>
@@ -430,24 +414,10 @@ function SportSection({ filters, onChange }: { filters: Filters; onChange: (f: P
       </div>
       <div className="grid grid-cols-2 gap-2">
         {SPORTS.map((s) => {
-          const on = filters.sports.includes(s.id)
           return (
-            <button
-              key={s.id}
-              onClick={() => toggle(s.id)}
-              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-                on ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
-              }`}
-            >
+            <CheckTile key={s.id} on={filters.sports.includes(s.id)} onClick={() => toggle(s.id)}>
               {s.label}
-              <span
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border ${
-                  on ? 'border-accent bg-accent text-ink' : 'border-line'
-                }`}
-              >
-                {on && <IconCheck className="h-3 w-3" />}
-              </span>
-            </button>
+            </CheckTile>
           )
         })}
       </div>
@@ -466,12 +436,7 @@ function MarketSection({ filters, onChange }: { filters: Filters; onChange: (f: 
   const visibleIds: string[] = visible.map((m) => m.id)
   const selected = filters.markets.filter((id) => visibleIds.includes(id))
 
-  const toggle = (id: string) =>
-    onChange({
-      markets: filters.markets.includes(id)
-        ? filters.markets.filter((x) => x !== id)
-        : [...filters.markets, id],
-    })
+  const toggle = (id: string) => onChange({ markets: toggleIn(filters.markets, id) })
 
   return (
     <div>
@@ -494,24 +459,10 @@ function MarketSection({ filters, onChange }: { filters: Filters; onChange: (f: 
       </div>
       <div className="grid grid-cols-2 gap-2">
         {visible.map((m) => {
-          const on = filters.markets.includes(m.id)
           return (
-            <button
-              key={m.id}
-              onClick={() => toggle(m.id)}
-              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-                on ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
-              }`}
-            >
+            <CheckTile key={m.id} on={filters.markets.includes(m.id)} onClick={() => toggle(m.id)}>
               {m.label}
-              <span
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border ${
-                  on ? 'border-accent bg-accent text-ink' : 'border-line'
-                }`}
-              >
-                {on && <IconCheck className="h-3 w-3" />}
-              </span>
-            </button>
+            </CheckTile>
           )
         })}
       </div>
@@ -569,36 +520,22 @@ function AlertBlock({
 
       {on && (
         <div className="mt-3 space-y-2">
-          <button
+          <ToggleRow
+            on={settings.alertSound}
             onClick={() => onChange({ alertSound: !settings.alertSound })}
-            className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-              settings.alertSound ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
-            }`}
+            title="Ton"
           >
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold">Ton</p>
-              <p className="text-[11.5px] leading-relaxed text-muted">
-                Kurzer Zweiklang. Funktioniert nur, solange der Tab offen ist.
-              </p>
-            </div>
-            <Switch on={settings.alertSound} />
-          </button>
+              Kurzer Zweiklang. Funktioniert nur, solange der Tab offen ist.
+          </ToggleRow>
 
-          <button
+          <ToggleRow
+            on={settings.alertDesktop}
             onClick={() => onChange({ alertDesktop: !settings.alertDesktop })}
-            className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-              settings.alertDesktop ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
-            }`}
+            title="Systemmeldung"
           >
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold">Systemmeldung</p>
-              <p className="text-[11.5px] leading-relaxed text-muted">
-                Erscheint auf macOS oben rechts, auch wenn der Browser im Hintergrund ist. Ein
-                Klick darauf holt das Fenster nach vorn.
-              </p>
-            </div>
-            <Switch on={settings.alertDesktop} />
-          </button>
+              Erscheint auf macOS oben rechts, auch wenn der Browser im Hintergrund ist. Ein
+              Klick darauf holt das Fenster nach vorn.
+          </ToggleRow>
 
           <div className="flex items-center gap-2 rounded-xl border border-line bg-surface p-3">
             <div className="min-w-0 flex-1">
@@ -667,65 +604,39 @@ function PushBlock({
   onChange: (s: Partial<Settings>) => void
   push: PushStatus | null
 }) {
-  const [probe, setProbe] = useState<{ state: 'idle' | 'laeuft' | 'ok' | 'fehler'; msg?: string }>({
-    state: 'idle',
-  })
-
-  const test = async () => {
-    setProbe({ state: 'laeuft' })
-    const r = await testPush()
-    setProbe(r.ok ? { state: 'ok' } : { state: 'fehler', msg: r.error })
-  }
+  const [probe, test] = usePushProbe()
 
   return (
     <>
-      <button
+      <ToggleRow
+        on={Boolean(push?.ready && settings.alertPush)}
         onClick={() => onChange({ alertPush: !settings.alertPush })}
         disabled={!push?.ready}
-        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-          !push?.ready
-            ? 'cursor-not-allowed border-line bg-surface opacity-60'
-            : settings.alertPush
-              ? 'border-accent/50 bg-accent/8'
-              : 'border-line bg-surface hover:bg-surface-2'
-        }`}
+        title="Aufs Telefon"
       >
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold">Aufs Telefon</p>
-          <p className="text-[11.5px] leading-relaxed text-muted">
-            {push?.ready ? (
-              <>
-                Verschickt der Scanner selbst — der Browser darf zu sein. Läuft über{' '}
-                <span className="text-dim">{push.via}</span>.
-              </>
-            ) : (
-              <>
-                Kein Meldeweg eingerichtet. Im README steht, wie du ntfy oder Pushover in zwei
-                Minuten einrichtest.
-              </>
-            )}
-          </p>
-        </div>
-        <Switch on={Boolean(push?.ready && settings.alertPush)} />
-      </button>
+        {push?.ready ? (
+          <>
+            Verschickt der Scanner selbst — der Browser darf zu sein. Läuft über{' '}
+            <span className="text-dim">{push.via}</span>.
+          </>
+        ) : (
+          <>
+            Kein Meldeweg eingerichtet. Im README steht, wie du ntfy oder Pushover in zwei
+            Minuten einrichtest.
+          </>
+        )}
+      </ToggleRow>
 
       {push?.ready && settings.alertPush && (
         <>
-          <button
+          <ToggleRow
+            on={settings.alertQuiet}
             onClick={() => onChange({ alertQuiet: !settings.alertQuiet })}
-            className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-              settings.alertQuiet ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
-            }`}
+            title="Nachtruhe"
           >
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold">Nachtruhe</p>
-              <p className="text-[11.5px] leading-relaxed text-muted">
-                Zwischen diesen Stunden bleibt das Telefon still. Nachgeholt wird nichts — was
-                morgens noch steht, meldet sich morgens.
-              </p>
-            </div>
-            <Switch on={settings.alertQuiet} />
-          </button>
+              Zwischen diesen Stunden bleibt das Telefon still. Nachgeholt wird nichts — was
+              morgens noch steht, meldet sich morgens.
+          </ToggleRow>
 
           {settings.alertQuiet && (
             <div className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3">
@@ -797,15 +708,7 @@ function PhoneSection({
   push: PushStatus | null
 }) {
   const [zeigen, setZeigen] = useState(false)
-  const [probe, setProbe] = useState<{ state: 'idle' | 'laeuft' | 'ok' | 'fehler'; msg?: string }>({
-    state: 'idle',
-  })
-
-  const test = async () => {
-    setProbe({ state: 'laeuft' })
-    const r = await testPush()
-    setProbe(r.ok ? { state: 'ok' } : { state: 'fehler', msg: r.error })
-  }
+  const [probe, test] = usePushProbe()
 
   const feld = 'w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px] outline-none focus:border-accent/60'
 
@@ -983,12 +886,7 @@ function HourPicker({ value, onChange }: { value: number; onChange: (v: number) 
 }
 
 function WarningsSection({ filters, onChange }: { filters: Filters; onChange: (f: Partial<Filters>) => void }) {
-  const toggle = (id: BetWarningId) =>
-    onChange({
-      warnings: filters.warnings.includes(id)
-        ? filters.warnings.filter((x) => x !== id)
-        : [...filters.warnings, id],
-    })
+  const toggle = (id: BetWarningId) => onChange({ warnings: toggleIn(filters.warnings, id) })
 
   return (
     <div className="max-w-2xl">
@@ -997,21 +895,16 @@ function WarningsSection({ filters, onChange }: { filters: Filters; onChange: (f
       </p>
       <div className="space-y-2">
         {BET_WARNINGS.map((w) => {
-          const on = filters.warnings.includes(w.id)
           return (
-            <button
+            <ToggleRow
               key={w.id}
+              on={filters.warnings.includes(w.id)}
               onClick={() => toggle(w.id)}
-              className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${
-                on ? 'border-danger/50 bg-danger/8' : 'border-line bg-surface hover:bg-surface-2'
-              }`}
+              title={w.label}
+              tone="danger"
             >
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold">{w.label}</p>
-                <p className="text-[11.5px] leading-relaxed text-muted">{w.detail}</p>
-              </div>
-              <Switch on={on} />
-            </button>
+              {w.detail}
+            </ToggleRow>
           )
         })}
       </div>
@@ -1090,13 +983,7 @@ function SortingSection({ sort, onChange }: { sort: SortKey; onChange: (s: SortK
             <p className="text-[13px] font-semibold">{s.label}</p>
             <p className="text-[11.5px] text-muted">{s.hint}</p>
           </div>
-          <span
-            className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border ${
-              sort === s.id ? 'border-accent bg-accent text-ink' : 'border-line'
-            }`}
-          >
-            {sort === s.id && <IconCheck className="h-3 w-3" />}
-          </span>
+          <CheckBox on={sort === s.id} round />
         </button>
       ))}
     </div>
@@ -1122,6 +1009,85 @@ function Chip({
       }`}
     >
       {children}
+    </button>
+  )
+}
+
+const toggleIn = <T,>(list: T[], id: T): T[] => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
+
+type Probe = { state: 'idle' | 'laeuft' | 'ok' | 'fehler'; msg?: string }
+
+/** Probemeldung über den eingerichteten Weg, samt Zustand für die Anzeige. */
+function usePushProbe(): [Probe, () => Promise<void>] {
+  const [probe, setProbe] = useState<Probe>({ state: 'idle' })
+  const test = async () => {
+    setProbe({ state: 'laeuft' })
+    const r = await testPush()
+    setProbe(r.ok ? { state: 'ok' } : { state: 'fehler', msg: r.error })
+  }
+  return [probe, test]
+}
+
+function CheckBox({ on, round }: { on: boolean; round?: boolean }) {
+  return (
+    <span
+      className={`grid h-5 w-5 shrink-0 place-items-center ${round ? 'rounded-full' : 'rounded-md'} border ${
+        on ? 'border-accent bg-accent text-ink' : 'border-line'
+      }`}
+    >
+      {on && <IconCheck className="h-3 w-3" />}
+    </span>
+  )
+}
+
+function CheckTile({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition ${
+        on ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
+      }`}
+    >
+      {children}
+      <CheckBox on={on} />
+    </button>
+  )
+}
+
+/** Zeile mit Titel, Erklärung und Schalter. */
+function ToggleRow({
+  on,
+  onClick,
+  title,
+  children,
+  disabled,
+  tone = 'accent',
+}: {
+  on: boolean
+  onClick: () => void
+  title: ReactNode
+  children: ReactNode
+  disabled?: boolean
+  tone?: 'accent' | 'danger'
+}) {
+  const state = disabled
+    ? 'cursor-not-allowed border-line bg-surface opacity-60'
+    : on
+      ? tone === 'danger'
+        ? 'border-danger/50 bg-danger/8'
+        : 'border-accent/50 bg-accent/8'
+      : 'border-line bg-surface hover:bg-surface-2'
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex w-full ${tone === 'danger' ? 'items-start' : 'items-center'} gap-3 rounded-xl border p-3 text-left transition ${state}`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold">{title}</p>
+        <p className="text-[11.5px] leading-relaxed text-muted">{children}</p>
+      </div>
+      <Switch on={on} />
     </button>
   )
 }
