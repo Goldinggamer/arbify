@@ -2,6 +2,7 @@ import { fetchText } from '../http.ts'
 import type { CanonicalMarket, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
 import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { inWindow } from './types.ts'
 
 /**
  * Interwetten — `/de/sport/upcoming/{sportId}?hours={n}` rendert das
@@ -156,7 +157,7 @@ export const interwetten: BookmakerAdapter = {
       }
 
       for (const e of parsePage(html, spec.market)) {
-        if (new Date(e.startTime).getTime() > cutoff) continue
+        if (!inWindow(new Date(e.startTime).getTime(), cutoff)) continue
         if (out.length >= ctx.maxEvents) break
         out.push({
         bookmakerId: 'interwetten',

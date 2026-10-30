@@ -2,6 +2,7 @@ import { fetchJson, pooled } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit } from '../types.ts'
 import { OVERTIME_SPORTS, SPORT_LABEL, sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { inWindow } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 
 /**
@@ -601,7 +602,7 @@ export const tipico: BookmakerAdapter = {
       // Ohne Eintrag in `eventsBySport` keine unterstützte Sportart.
       const spec = specById.get(String(e.id))
       if (!spec) return []
-      if (e.eventStartTime > cutoff) return []
+      if (!inWindow(e.eventStartTime, cutoff)) return []
       const outcomes = outcomesFromList(
         groups.get(String(e.id)),
         { home: e.team1, away: e.team2 },

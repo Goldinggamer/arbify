@@ -1,6 +1,20 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { halfOf, num } from './labels.ts'
+import { inWindow } from './types.ts'
+
+test('inWindow: eine unlesbare Anstoßzeit liegt nicht im Fenster', () => {
+  // NaN > cutoff ist false — ohne Prüfung ging die Partie durch, und das
+  // anschließende toISOString() warf und kostete den ganzen Sweep des Buchs.
+  const cutoff = Date.UTC(2030, 0, 2)
+  assert.equal(inWindow(NaN, cutoff), false)
+  assert.equal(inWindow(Date.parse('kein Datum'), cutoff), false)
+  assert.equal(inWindow(undefined, cutoff), false)
+
+  assert.equal(inWindow(Date.UTC(2030, 0, 1), cutoff), true)
+  assert.equal(inWindow(cutoff, cutoff), true)
+  assert.equal(inWindow(cutoff + 1, cutoff), false)
+})
 
 test('num: ein fehlender Wert ist keine Null', () => {
   // Number('') ist 0. Eine fehlende Linie wurde so zur Linie 0 und landete

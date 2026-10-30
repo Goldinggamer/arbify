@@ -1,5 +1,9 @@
 import type { RawEvent, Sport } from '../types.ts'
 
+/** Liegt ein Anstoß (ms) im Zeitfenster? Eine unlesbare Zeit liegt es nie. */
+export const inWindow = (ms: number | undefined, cutoff: number): boolean =>
+  typeof ms === 'number' && Number.isFinite(ms) && ms <= cutoff
+
 export type AdapterContext = {
   /** Nur Events innerhalb dieses Zeitfensters holen (ms ab jetzt). */
   windowMs: number

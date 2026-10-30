@@ -2,6 +2,7 @@ import { fetchJson } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit } from '../types.ts'
 import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { inWindow } from './types.ts'
 import { deepen } from './depth.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { teamTokens, tokenSimilarity } from '../match.ts'
@@ -466,7 +467,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
         if (p.status !== 'fulfilled') continue
         for (const item of p.value.res.events ?? []) {
           const e = item.event
-          if (!e?.start || new Date(e.start).getTime() > cutoff) continue
+          if (!e?.start || !inWindow(new Date(e.start).getTime(), cutoff)) continue
           const ev = build(e, item.betOffers ?? [], p.value.sport)
           if (ev) out.push(ev)
         }

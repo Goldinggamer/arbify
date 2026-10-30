@@ -2,6 +2,7 @@ import { fetchJson, fetchText, pooled } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
 import { SPORT_LABEL, sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { inWindow } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { readStateAfter } from './html-state.ts'
 import { deepen } from './depth.ts'
@@ -337,7 +338,7 @@ export const betano: BookmakerAdapter = {
       for (const p of pages) {
         if (p.status !== 'fulfilled') continue
         for (const e of p.value) {
-          if (e.startTime > cutoff) continue
+          if (!inWindow(e.startTime, cutoff)) continue
           const teams = (e.shortName ?? e.name ?? '').split(' - ')
           const ev = toRawEvent(
             e,

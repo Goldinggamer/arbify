@@ -4,6 +4,7 @@ import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit }
 import { OVERTIME_SPORTS, SPORT_LABEL } from '../types.ts'
 import { teamTokens, tokenSimilarity } from '../match.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { inWindow } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { nameMatch } from '../players.ts'
 import { deepen } from './depth.ts'
@@ -387,7 +388,7 @@ export const winamax: BookmakerAdapter = {
       const { s, state } = p.value
       for (const m of Object.values(state.matches ?? {})) {
         if (!m || m.sportId !== s.id || !m.matchStart) continue
-        if (m.matchStart * 1000 > cutoff) continue
+        if (!inWindow(m.matchStart * 1000, cutoff)) continue
         const home = m.competitor1Name?.trim() ?? ''
         const away = m.competitor2Name?.trim() ?? ''
         const ev = buildEvent(state, m, outcomesFor(state, m.matchId, home, away, s.sport), s.sport)

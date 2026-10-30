@@ -2,6 +2,7 @@ import { fetchJson, pooled } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit } from '../types.ts'
 import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel, sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { inWindow } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { halfOf, lineFromText, num, oddEvenSide, simplify, teamSide, yesNoSide } from './labels.ts'
 import { nameMatch } from '../players.ts'
@@ -591,7 +592,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
         if (!fixtures.length) break
 
         for (const f of fixtures) {
-          if (new Date(f.startDate).getTime() > cutoff) continue
+          if (!inWindow(new Date(f.startDate).getTime(), cutoff)) continue
           const sport = sportFromLabel(f.sport?.name?.value ?? '')
           if (!sport) continue
           const ev = toRawEvent(f, brand, undefined, sport)
