@@ -1,11 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import type { Filters, Opportunity, PushConfig, Settings } from '../src/types.ts'
+import type { BetWarningId, Filters, Opportunity, PushConfig, Settings } from '../src/types.ts'
 import { applyFilters } from '../src/lib/filter.ts'
 import { arbPercentOf } from '../src/lib/arbitrage.ts'
+import { decimal } from '../src/lib/format.ts'
 import { BOOKMAKERS } from '../src/data/bookmakers.ts'
-import { WARNING_BY_ID } from '../src/data/warnings.ts'
-import { ALL_WARNING_IDS } from '../src/data/warnings.ts'
-import type { BetWarningId } from '../src/types.ts'
+import { ALL_WARNING_IDS, WARNING_BY_ID } from '../src/data/warnings.ts'
 import type { ScanOpportunity } from './scan.ts'
 import { configuredTransport, type PushMessage, type PushTransport } from './notify.ts'
 import { DEFAULT_WINDOW_HOURS, hoursToMs } from '../src/lib/window.ts'
@@ -165,9 +164,6 @@ export function decide(
 const BOOK_NAME = new Map(BOOKMAKERS.map((b) => [b.id, b.name]))
 const bookName = (id: string): string => BOOK_NAME.get(id) ?? id
 
-const de = (n: number, digits = 2): string =>
-  n.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits })
-
 /**
  * Die Meldung, wie sie auf dem Sperrbildschirm steht.
  *
@@ -184,7 +180,7 @@ export function formatMessage(o: Opportunity): PushMessage {
   })
 
   const legs = o.outcomes.map(
-    (oc) => `${oc.label} — ${de(oc.best.odds)} @ ${bookName(oc.best.bookmakerId)}`,
+    (oc) => `${oc.label} — ${decimal(oc.best.odds)} @ ${bookName(oc.best.bookmakerId)}`,
   )
   const warnings = o.warnings
     .map((w) => WARNING_BY_ID[w]?.label)
@@ -218,7 +214,7 @@ export function formatMessage(o: Opportunity): PushMessage {
   }
 
   return {
-    title: `${de(percent)} % · ${o.sport}`,
+    title: `${decimal(percent)} % · ${o.sport}`,
     body,
     priority: percent >= HIGH_PERCENT ? 'high' : 'default',
     clickUrl: actions[0]?.url,

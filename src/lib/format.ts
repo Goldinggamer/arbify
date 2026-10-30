@@ -18,11 +18,12 @@ export const moneyShort = (v: number) =>
 
 export const signedMoney = (v: number) => (v >= 0 ? '+' : '−') + money(Math.abs(v))
 
-export const pct = (v: number, digits = 2) =>
-  v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + '%'
+export const decimal = (v: number, digits = 2) =>
+  v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 
-export const odds = (v: number) =>
-  v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+export const pct = (v: number, digits = 2) => decimal(v, digits) + '%'
+
+export const odds = (v: number) => decimal(v)
 
 export function relativeTime(iso: string): string {
   const d = new Date(iso)
