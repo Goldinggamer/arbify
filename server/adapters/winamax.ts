@@ -1,11 +1,12 @@
-import { fetchText, pooled } from '../http.ts'
+import { fetchText } from '../http.ts'
 import { readStateAfter } from './html-state.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit } from '../types.ts'
-import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel } from '../types.ts'
+import { OVERTIME_SPORTS, SPORT_LABEL } from '../types.ts'
 import { teamTokens, tokenSimilarity } from '../match.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { nameMatch } from '../players.ts'
+import { deepen } from './depth.ts'
 import { oddEvenSide, yesNoSide } from './labels.ts'
 
 /**
@@ -529,18 +530,11 @@ export const winamax: BookmakerAdapter = {
   },
 
   async fetchDepth(events: RawEvent[]): Promise<RawEvent[]> {
-    const targets = events.slice(0, MAX_DEPTH)
-    const results = await pooled(targets, 4, async (ev) => {
-      const state = await loadState(`${HOST}/sportwetten/match/${ev.bookEventId}`)
-      if (!state) return ev
-      const sport: Sport = sportFromLabel(ev.sport) ?? 'FOOTBALL'
-      const outcomes = outcomesFor(state, Number(ev.bookEventId), ev.home, ev.away, sport)
-      return outcomes.length > ev.outcomes.length
-        ? { ...ev, outcomes, fetchedAt: new Date().toISOString() }
-        : ev
-    })
     // Nur die vertieften Events zurückgeben; der Aufrufer behält für alle
     // übrigen den flachen Stand.
-    return results.map((r, i) => (r.status === 'fulfilled' ? r.value : targets[i]))
+    return deepen(events.slice(0, MAX_DEPTH), 4, async (ev, sport) => {
+      const state = await loadState(`${HOST}/sportwetten/match/${ev.bookEventId}`)
+      return state ? outcomesFor(state, Number(ev.bookEventId), ev.home, ev.away, sport) : null
+    })
   },
 }

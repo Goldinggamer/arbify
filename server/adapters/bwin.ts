@@ -1,6 +1,6 @@
 import { fetchJson, pooled } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit } from '../types.ts'
-import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel } from '../types.ts'
+import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel, sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { lineFromText, num, oddEvenSide, simplify, teamSide, yesNoSide } from './labels.ts'
@@ -769,7 +769,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
         )
         // Teamnamen aus dem Sweep mitgeben — im Detailabruf sind sie
         // unbrauchbar (siehe teamsOf).
-        const sport: Sport = sportFromLabel(ev.sport) ?? 'FOOTBALL'
+        const sport = sportOf(ev.sport)
         const deep = view.fixture
           ? toRawEvent(view.fixture, brand, { home: ev.home, away: ev.away }, sport)
           : null

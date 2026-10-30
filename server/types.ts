@@ -56,6 +56,12 @@ const SPORT_BY_LABEL = new Map<string, Sport>(
 export const sportFromLabel = (label: string): Sport | null => SPORT_BY_LABEL.get(label) ?? null
 
 /**
+ * Wie `sportFromLabel`, fällt aber auf Fußball zurück: eine unbekannte
+ * Sportart würde sonst still von der Tiefenstufe ausgeschlossen.
+ */
+export const sportOf = (label: string): Sport => sportFromLabel(label) ?? 'FOOTBALL'
+
+/**
  * Sportarten mit **einzelnen Sportlern** statt Mannschaften.
  *
  * Für sie gilt der Namensabgleich aus `server/players.ts`: Vereinsnamen werden

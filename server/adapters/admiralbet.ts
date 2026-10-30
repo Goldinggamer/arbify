@@ -1,8 +1,8 @@
 import { AswGateway } from '../aswgateway.ts'
-import { pooled } from '../http.ts'
+import { deepen } from './depth.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
-import { SPORT_LABEL, sportFromLabel } from '../types.ts'
+import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 
 const HOST = 'www.admiralbet.de'
@@ -340,17 +340,10 @@ export const admiralbet: BookmakerAdapter = {
    * belastbare Lösung. `MAX_DEPTH` deckelt die Laufzeit.
    */
   async fetchDepth(events: RawEvent[]): Promise<RawEvent[]> {
-    const targets = events.slice(0, MAX_DEPTH)
-    const results = await pooled(targets, 1, async (ev) => {
+    return deepen(events.slice(0, MAX_DEPTH), 1, async (ev, sport) => {
       await gateway.request('RetrieveDetailView', { event: ev.bookEventId })
       const entity = gateway.entity<AswEvent>(ev.bookEventId)
-      if (!entity) return ev
-      const sport: Sport = sportFromLabel(ev.sport) ?? 'FOOTBALL'
-      const outcomes = outcomesByEvent(entity, sport)
-      return outcomes.length > ev.outcomes.length
-        ? { ...ev, outcomes, fetchedAt: new Date().toISOString() }
-        : ev
+      return entity ? outcomesByEvent(entity, sport) : null
     })
-    return results.map((r, i) => (r.status === 'fulfilled' ? r.value : targets[i]))
   },
 }

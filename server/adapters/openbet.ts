@@ -1,8 +1,9 @@
 import { LiveDocClient } from '../livedoc.ts'
 import { pooled } from '../http.ts'
+import { deepen } from './depth.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
-import { SPORT_LABEL, sportFromLabel } from '../types.ts'
+import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 
 /**
@@ -433,16 +434,15 @@ export const daznbet: BookmakerAdapter = {
   },
 
   async fetchDepth(events: RawEvent[]): Promise<RawEvent[]> {
-    const results = await pooled(events, 8, async (ev) => {
+    return deepen(events, 8, async (ev, sport) => {
       const map = await eventDoc.document<Record<string, ObMarketRef>>(`eventmarketsmap/${ev.bookEventId}`, {
         'X-Lang': LANG,
         sendEmpty: true,
       })
 
-      const sport: Sport = sportFromLabel(ev.sport) ?? 'FOOTBALL'
       const types = sport === 'TENNIS' ? WANTED_TENNIS_TYPES : WANTED_TYPES
       const wanted = Object.values(map ?? {}).filter((m) => m.id && m.type && types.has(m.type))
-      if (!wanted.length) return ev
+      if (!wanted.length) return null
 
       const loaded = await pooled(wanted, 12, (m) =>
         marketDoc.document<ObMarket>(`markets/${m.id}`, { 'X-Lang': LANG, sendEmpty: true }),
@@ -453,12 +453,7 @@ export const daznbet: BookmakerAdapter = {
         if (r.status !== 'fulfilled' || !r.value) continue
         outcomes.push(...toOutcomes(r.value, 'daznbet', sport))
       }
-
-      return outcomes.length > ev.outcomes.length
-        ? { ...ev, outcomes, fetchedAt: new Date().toISOString() }
-        : ev
+      return outcomes
     })
-
-    return results.map((r, i) => (r.status === 'fulfilled' ? r.value : events[i]))
   },
 }

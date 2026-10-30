@@ -1,6 +1,6 @@
 import { fetchJson, pooled } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit } from '../types.ts'
-import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel } from '../types.ts'
+import { OVERTIME_SPORTS, SPORT_LABEL, sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 
@@ -725,14 +725,14 @@ export const tipico: BookmakerAdapter = {
 
     const leagues = new Map<number, string>()
     /** Event-ID → Sportart, aus `eventsBySport` der Antwort. */
-    const sportOf = new Map<string, (typeof SPORTS)[number]>()
+    const specById = new Map<string, (typeof SPORTS)[number]>()
     const groups = new Map<string, Record<string, ListGroup[]>>()
     const events = new Map<string, ListEvent>()
 
     for (const r of lists) {
       if (r.status !== 'fulfilled') continue
       for (const [k, v] of r.value.leagues) leagues.set(k, v)
-      for (const s of SPORTS) for (const id of r.value.idsBySport.get(s.key) ?? []) sportOf.set(id, s)
+      for (const s of SPORTS) for (const id of r.value.idsBySport.get(s.key) ?? []) specById.set(id, s)
       for (const [k, v] of r.value.groups) groups.set(k, v)
       for (const e of r.value.events) if (e?.id) events.set(String(e.id), e)
     }
@@ -744,7 +744,7 @@ export const tipico: BookmakerAdapter = {
       // Ohne Eintrag in `eventsBySport` gehört das Event zu keiner der
       // unterstützten Sportarten — der Live-Abruf liefert auch Basketball
       // und Eishockey mit.
-      const spec = sportOf.get(String(e.id))
+      const spec = specById.get(String(e.id))
       if (!spec) return []
       if (e.eventStartTime > cutoff) return []
       const outcomes = outcomesFromList(
@@ -781,7 +781,7 @@ export const tipico: BookmakerAdapter = {
 
   async fetchDepth(events: RawEvent[]): Promise<RawEvent[]> {
     const results = await pooled(events, 5, async (ev) => {
-      const sport: Sport = sportFromLabel(ev.sport) ?? 'FOOTBALL'
+      const sport = sportOf(ev.sport)
       const outcomes = await fetchOutcomes(ev.bookEventId, { home: ev.home, away: ev.away }, sport)
       return outcomes.length
         ? { ...ev, outcomes, fetchedAt: new Date().toISOString() }

@@ -3,17 +3,8 @@ import { httpStats, resetHttpStats, type HostStats } from './http.ts'
 import type { AdapterResult, BookmakerAdapter } from './adapters/types.ts'
 import { matchEvents } from './match.ts'
 import { eventHeat, scanForArbitrage, type MarginRow, type ScanOpportunity } from './scan.ts'
-import type { RawEvent, Sport } from './types.ts'
-import { sportFromLabel } from './types.ts'
-
-/**
- * Anzeigename → Modellkennung der Sportart.
- *
- * Fällt auf Fußball zurück, weil `depthSports` sonst eine unbekannte Sportart
- * stillschweigend von der Tiefenstufe ausschlösse — der Rückfall kostet
- * höchstens ein paar Detailabrufe, das Ausschließen kostet Märkte.
- */
-const sportOf = (sport: string): Sport => sportFromLabel(sport) ?? 'FOOTBALL'
+import type { RawEvent } from './types.ts'
+import { sportOf } from './types.ts'
 
 /**
  * Zwei Takte statt einem.

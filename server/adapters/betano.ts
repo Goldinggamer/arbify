@@ -1,9 +1,10 @@
 import { fetchJson, fetchText, pooled } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
-import { sportFromLabel } from '../types.ts'
+import { sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { readStateAfter } from './html-state.ts'
+import { deepen } from './depth.ts'
 import { nameMatch } from '../players.ts'
 import { lineFromText, num, oddEvenSide, simplify, yesNoSide } from './labels.ts'
 
@@ -412,7 +413,7 @@ async function fetchEventMarkets(ev: RawEvent): Promise<RawOutcome[]> {
   if (!state) return []
   const found = findEvent(state, ev.bookEventId)
   if (!found) return []
-  const sport: Sport = sportFromLabel(ev.sport) ?? 'FOOTBALL'
+  const sport = sportOf(ev.sport)
   return toOutcomes(found, { home: ev.home, away: ev.away }, sport)
 }
 
@@ -488,14 +489,6 @@ export const betano: BookmakerAdapter = {
   },
 
   async fetchDepth(events: RawEvent[]): Promise<RawEvent[]> {
-    const results = await pooled(events, 4, async (ev) => {
-      const outcomes = await fetchEventMarkets(ev)
-      // Die Event-Seite ist reichhaltiger als der Sweep, aber falls das
-      // Parsen scheitert, bleibt der flache Stand besser als nichts.
-      return outcomes.length > ev.outcomes.length
-        ? { ...ev, outcomes, fetchedAt: new Date().toISOString() }
-        : ev
-    })
-    return results.map((r, i) => (r.status === 'fulfilled' ? r.value : events[i]))
+    return deepen(events, 4, (ev) => fetchEventMarkets(ev))
   },
 }

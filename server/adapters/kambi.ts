@@ -1,7 +1,8 @@
-import { fetchJson, pooled } from '../http.ts'
+import { fetchJson } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit } from '../types.ts'
-import { SPORT_LABEL, sportFromLabel } from '../types.ts'
+import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
+import { deepen } from './depth.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 import { teamTokens, tokenSimilarity } from '../match.ts'
 
@@ -615,18 +616,13 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
     },
 
     async fetchDepth(events: RawEvent[]): Promise<RawEvent[]> {
-      const results = await pooled(events, 4, async (ev) => {
+      return deepen(events, 4, async (ev, sport) => {
         const d = await fetchJson<{ betOffers?: BetOffer[]; events?: KambiEvent[] }>(
           `${base}/betoffer/event/${ev.bookEventId}.json?${QUERY}`,
           OPTS,
         )
-        const sport: Sport = sportFromLabel(ev.sport) ?? 'FOOTBALL'
-        const outcomes = toOutcomes(d.betOffers ?? [], ev.home, ev.away, brand.id, sport)
-        return outcomes.length > ev.outcomes.length
-          ? { ...ev, outcomes, fetchedAt: new Date().toISOString() }
-          : ev
+        return toOutcomes(d.betOffers ?? [], ev.home, ev.away, brand.id, sport)
       })
-      return results.map((r, i) => (r.status === 'fulfilled' ? r.value : events[i]))
     },
   }
 }
