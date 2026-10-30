@@ -1,5 +1,16 @@
 import { teamTokens, tokenSimilarity } from '../match.ts'
-import type { Side } from '../types.ts'
+import type { Period, Side } from '../types.ts'
+
+/**
+ * Halbzeit aus einer deutschen Beschriftung, `null` wenn keine genannt ist.
+ * Kennt Lang- und Kurzform ("1. Halbzeit", "1. Hälfte", "1. HZ", "erste Halbzeit").
+ */
+export function halfOf(label: string): Period | null {
+  const s = label.toLowerCase()
+  if (/1\.\s*(halbzeit|hälfte|hz)\b|erste halbzeit/.test(s)) return 'H1'
+  if (/2\.\s*(halbzeit|hälfte|hz)\b|zweite halbzeit/.test(s)) return 'H2'
+  return null
+}
 
 /** Zahl aus einem Feld oder einer Beschriftung, Dezimalkomma erlaubt. */
 export const num = (v: unknown): number | null => {

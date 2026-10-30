@@ -3,7 +3,7 @@ import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport, Unit }
 import { OVERTIME_SPORTS, SPORT_LABEL, sportFromLabel, sportOf } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
-import { lineFromText, num, oddEvenSide, simplify, teamSide, yesNoSide } from './labels.ts'
+import { halfOf, lineFromText, num, oddEvenSide, simplify, teamSide, yesNoSide } from './labels.ts'
 import { nameMatch } from '../players.ts'
 
 /**
@@ -72,12 +72,7 @@ type Fixture = {
   totalMarketsCount?: number
 }
 
-function periodOf(name: string): Period {
-  const s = name.toLowerCase()
-  if (s.includes('1. hälfte') || s.includes('1. halbzeit')) return 'H1'
-  if (s.includes('2. hälfte') || s.includes('2. halbzeit')) return 'H2'
-  return 'FT'
-}
+const periodOf = (name: string): Period => halfOf(name) ?? 'FT'
 
 export function toMarket(m: OptionMarket, home: string, away: string, bookId: string): CanonicalMarket | null {
   const raw = m.name?.value ?? ''

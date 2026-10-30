@@ -3,6 +3,7 @@ import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from 
 import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
 import { noteUnmapped } from '../diagnostics.ts'
+import { halfOf } from './labels.ts'
 
 /**
  * BetConstruct „swarm“ (VBET) — Quoten nur über WebSocket: `request_session`,
@@ -50,9 +51,9 @@ type BcSport = { id?: number; name?: string; alias?: string; region?: Record<str
 
 function periodOf(type: string, name: string): Period {
   const s = `${type} ${name}`.toLowerCase()
-  if (s.includes('halftime') || s.includes('1. halbzeit')) return 'H1'
-  if (s.includes('secondhalf') || s.includes('2. halbzeit')) return 'H2'
-  return 'FT'
+  if (s.includes('halftime')) return 'H1'
+  if (s.includes('secondhalf')) return 'H2'
+  return halfOf(s) ?? 'FT'
 }
 
 /**

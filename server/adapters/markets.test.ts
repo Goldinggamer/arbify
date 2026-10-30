@@ -341,6 +341,31 @@ test('bwin: Team-Totals überstehen das deutsche Exonym', () => {
   assert.equal(key(bwinMarket(m('Gesamtanzahl Tore', '2.5'), teams.home, teams.away, 'bwin')), 'OU|FT|-|2.5')
 })
 
+test('die Halbzeit-Kurzform „1. HZ“ geht bei keinem Anbieter als Ganzspiel durch', () => {
+  // Sportwetten.de schreibt so; dort fielen Halbzeit-Märkte auf den
+  // Ganzspiel-Schlüssel und ergaben Scheinfunde. Dieselbe Lücke stand in
+  // bwin, Betano und BetConstruct.
+  const m = (name: string, attr: string) => ({ id: '1', name: { value: name }, attr, options: [] })
+  assert.equal(key(bwinMarket(m('Gesamtanzahl Tore - 1. HZ', '1.5'), 'A', 'B', 'bwin')), 'OU|H1|-|1.5')
+  assert.equal(key(bwinMarket(m('Gesamtanzahl Tore - 2.HZ', '0.5'), 'A', 'B', 'bwin')), 'OU|H2|-|0.5')
+  assert.equal(key(bc('OverUnder', '1. HZ Gesamttore', { base: 1.5 })), 'OU|H1|-|1.5')
+
+  const betano = betanoOutcomes({
+    id: 'm1',
+    name: 'Gesamtzahl Tore 1. HZ',
+    type: 'TOTG',
+    selections: [
+      { id: 'a', name: 'Über 1.5', price: 2.1, handicap: 1.5 },
+      { id: 'b', name: 'Unter 1.5', price: 1.7, handicap: 1.5 },
+    ],
+  })
+  assert.deepEqual([...new Set(betano.map((o) => key(o.market)))], ['OU|H1|-|1.5'])
+
+  // Die Langformen bleiben, wie sie waren.
+  assert.equal(key(bwinMarket(m('Gesamtanzahl Tore - 1. Hälfte', '1.5'), 'A', 'B', 'bwin')), 'OU|H1|-|1.5')
+  assert.equal(key(bc('OverUnder', 'Gesamttore', { base: 2.5 })), 'OU|FT|-|2.5')
+})
+
 test('bwin: ein mehrdeutiges Präfix wird verworfen statt geraten', () => {
   // "Manchester" passt zu beiden Mannschaften gleich gut. Ein geratenes Team
   // ist im Modell dasselbe wie eine erfundene Wette, deshalb muss der Abstand

@@ -6,7 +6,7 @@ import { noteUnmapped } from '../diagnostics.ts'
 import { readStateAfter } from './html-state.ts'
 import { deepen } from './depth.ts'
 import { nameMatch } from '../players.ts'
-import { lineFromText, num, oddEvenSide, simplify, yesNoSide } from './labels.ts'
+import { halfOf, lineFromText, num, oddEvenSide, simplify, yesNoSide } from './labels.ts'
 
 /**
  * Betano (Kaizen Gaming). Cloudflare prüft den TLS-Fingerprint, deshalb
@@ -81,12 +81,7 @@ type BetanoEvent = {
   markets?: Market[]
 }
 
-function periodOf(name: string, type: string): Period {
-  const s = `${name} ${type}`.toLowerCase()
-  if (s.includes('1. halbzeit') || s.includes('erste halbzeit')) return 'H1'
-  if (s.includes('2. halbzeit') || s.includes('zweite halbzeit')) return 'H2'
-  return 'FT'
-}
+const periodOf = (name: string, type: string): Period => halfOf(`${name} ${type}`) ?? 'FT'
 
 /**
  * Marktfamilie ohne Linie: Betano bündelt alle Torgrenzen in einem Markt

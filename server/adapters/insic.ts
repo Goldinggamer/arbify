@@ -2,7 +2,7 @@ import { fetchJson } from '../http.ts'
 import type { CanonicalMarket, Period, RawEvent, RawOutcome, Side, Sport } from '../types.ts'
 import { SPORT_LABEL } from '../types.ts'
 import type { AdapterContext, BookmakerAdapter } from './types.ts'
-import { num } from './labels.ts'
+import { halfOf, num } from './labels.ts'
 import { noteUnmapped } from '../diagnostics.ts'
 
 /**
@@ -62,12 +62,7 @@ type InsicResponse = {
  * Kurzform „1. HZ“ (bei Team-Totals) muss mit: übersehen landeten Halbzeit-
  * Märkte als Ganzspiel im Bestand und ergaben Scheinfunde.
  */
-function periodOf(label: string): Period {
-  const l = label.toLowerCase()
-  if (/1\.\s*(halbzeit|hälfte|hz)\b/.test(l)) return 'H1'
-  if (/2\.\s*(halbzeit|hälfte|hz)\b/.test(l)) return 'H2'
-  return 'FT'
-}
+const periodOf = (label: string): Period => halfOf(label) ?? 'FT'
 
 /** "0:1" → −1 aus Heimsicht. */
 function handicapOf(special: string | undefined): number | null {
