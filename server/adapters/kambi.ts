@@ -7,24 +7,11 @@ import { noteUnmapped } from '../diagnostics.ts'
 import { teamTokens, tokenSimilarity } from '../match.ts'
 
 /**
- * Kambi — die zweite Plattform, die mehrere Marken auf einmal abdeckt.
+ * Kambi — öffentliche Offering-API, Marke über ein Kürzel im Pfad (LeoVegas).
  *
- * Kambi ist ein B2B-Sportsbook-Anbieter; die Offering-API ist öffentlich und
- * unterscheidet Marken nur über ein Kürzel im Pfad. LeoVegas läuft darauf.
- *
- * Zwei Eigenheiten:
- *
- *  - Quoten und Linien kommen als **Ganzzahl mal 1000** (1,95 → 1950).
- *  - Es gibt **keine Sportradar-ID**. Anders als bei Tipico, Betano und
- *    Entain läuft das Matching hier über normalisierte Teamnamen plus
- *    Anstoßzeit. Das ist der schwächere Weg — dafür liefert Kambi `homeName`
- *    und `awayName` getrennt, sodass zumindest die Ausrichtung eindeutig ist.
- *
- * Die Marktzuordnung arbeitet mit einer **Positivliste**: nur ausdrücklich
- * bekannte Kriterien werden übernommen. Kambi liefert unter anderem
- * "Ecken insgesamt" und "Nächstes Tor" im selben Format wie "Gesamttore" —
- * würde man nach Struktur statt nach Bezeichnung mappen, entstünden
- * Vergleiche zwischen Ecken und Toren.
+ * Quoten und Linien kommen als Ganzzahl × 1000. Keine Sportradar-ID; dafür
+ * `homeName`/`awayName` getrennt. Die Zuordnung ist eine Positivliste:
+ * Ecken und Tore haben dasselbe Format und dürfen nicht verwechselt werden.
  */
 
 const API = 'https://eu-offering-api.kambicdn.com/offering/v2018'
@@ -51,15 +38,7 @@ type KambiOutcome = {
 type BetOffer = {
   id: number
   eventId: number
-  /**
-   * `englishLabel` ist der verlässlichere der beiden Namen.
-   *
-   * Die deutsche Beschriftung schwankt selbst innerhalb einer Antwort:
-   * "Gesamte Punkte by X - einchließlich Verlängerung" steht neben
-   * "Gesamtpunkte durch Y - einschließlich Verlängerung" — verschiedene
-   * Präpositionen, ein Tippfehler, dieselbe Wette. Das englische Kriterium
-   * schreibt beide Male "Total Points by … - Including Overtime".
-   */
+  /** `englishLabel` ist verlässlicher: die deutsche Beschriftung schwankt selbst innerhalb einer Antwort. */
   criterion?: { label?: string; englishLabel?: string }
   betOfferType?: { name?: string }
   outcomes?: KambiOutcome[]
@@ -81,13 +60,7 @@ type KambiEvent = {
 const dec = (v: number | undefined): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v / 1000 : null
 
-/**
- * Ordnet ein Kambi-Kriterium dem kanonischen Modell zu.
- *
- * Bewusst als Positivliste: alles, was hier nicht ausdrücklich steht, wird
- * verworfen. Der teuerste Fehler wäre, "Ecken insgesamt" oder "Nächstes Tor"
- * versehentlich als Gesamttore zu behandeln.
- */
+/** Fußball-Kriterien. Positivliste: was hier nicht steht, wird verworfen. */
 export function toMarket(
   offer: BetOffer,
   outcome: KambiOutcome,
@@ -96,13 +69,11 @@ export function toMarket(
   bookId: string,
 ): CanonicalMarket | null {
   const label = offer.criterion?.label ?? ''
-  // Kambi mischt Gedankenstrich und Bindestrich ("Gesamttore – 1. Hälfte"
-  // gegen "Gesamte Treffer von X - 1. Halbzeit"). Vereinheitlichen, sonst
-  // greifen die Muster nur zufällig.
+  // Gedanken- und Bindestrich vereinheitlichen, Kambi mischt beide.
   const l = label.toLowerCase().replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim()
   const line = dec(outcome.line)
 
-  /** Hängt an einem Kriterium eine Halbzeitangabe? */
+  /** Hängt an einem Kriterium eine Halbzeitangabe? `null`: unbekannter Zusatz. */
   const suffixPeriod = (rest: string): Period | null => {
     const s = rest.trim()
     if (!s) return 'FT'
@@ -111,28 +82,19 @@ export function toMarket(
     return null
   }
 
-  // Siegwette. "Reguläre Spielzeit" ist das Endergebnis, "Halbzeit" die
-  // erste Hälfte — nicht intuitiv, aber so heißen sie bei Kambi.
+  // "Reguläre Spielzeit" ist das Endergebnis, "Halbzeit" die erste Hälfte.
   if (l === 'reguläre spielzeit') return { type: '1X2', period: 'FT', line: null, subject: null }
   if (l === 'halbzeit' || l === '1. hälfte') return { type: '1X2', period: 'H1', line: null, subject: null }
   if (l === '2. hälfte') return { type: '1X2', period: 'H2', line: null, subject: null }
 
-  // Die Halbzeit hängt hier als Suffix am Kriterium ("Beide Teams treffen -
-  // 1. Halbzeit"). "Beide Teams treffen in beiden Hälften" ist ein anderer
-  // Markt und fällt durch `suffixPeriod` heraus, statt als Ganzspiel-BTTS
-  // durchzugehen.
+  // "… in beiden Hälften" fällt über `suffixPeriod` heraus.
   if (l.startsWith('beide teams treffen')) {
     const period = suffixPeriod(l.slice('beide teams treffen'.length))
     return period ? { type: 'BTTS', period, line: null, subject: null } : null
   }
 
-  // Die "Gesamttore"-Familie trägt **zwei** verschiedene Märkte: Über/Unter
-  // ("Gesamttore – 2. Hälfte") und die Parität ("Gesamttore ungerade/gerade").
-  // Die Parität muss zuerst geprüft werden — sonst landet sie im
-  // Über/Unter-Zweig, findet dort keine Linie und wird stillschweigend
-  // verworfen. Genau daran fehlte gerade/ungerade bei Kambi vollständig, ohne
-  // je in der Diagnose aufzutauchen: die Meldung steht erst hinter diesem
-  // Block, erreicht wurde sie nie.
+  // "Gesamttore" trägt Über/Unter und die Parität ("Gesamttore ungerade/gerade").
+  // Die Parität zuerst — sonst fällt sie im Über/Unter-Zweig still durch.
   if (l.startsWith('gesamttore')) {
     const rest = l.slice('gesamttore'.length).trim()
     const parity = /^(un)?gerade\/(un)?gerade/.exec(rest)
@@ -145,9 +107,7 @@ export function toMarket(
     return { type: 'OU', period, line, subject: null }
   }
 
-  // "Gesamte Treffer von Cerro Porteño" — Team-Total. Muss sauber vom
-  // Gesamtergebnis getrennt bleiben, sonst werden verschiedene Wetten
-  // gegeneinander gerechnet.
+  // "Gesamte Treffer von Cerro Porteño" — Team-Total.
   if (l.startsWith('gesamte treffer von')) {
     if (line === null) return null
     const rest = l.slice('gesamte treffer von'.length).trim()
@@ -163,15 +123,8 @@ export function toMarket(
     return null
   }
 
-  // Zwei Schreibweisen für denselben Markt, je nach Periode:
-  // "Drei-Wege-Handicap" (Ganzspiel) und "3-Wege Handicap - 1. Hälfte".
-  //
-  // Wichtig ist die Abgrenzung zum Kriterium **"Handicap"** ohne Zusatz: das
-  // ist bei Kambi die zweiwegige asiatische Linie (nachgemessen: nur
-  // OT_ONE@0.5 und OT_TWO@-0.5, kein OT_CROSS). Sie hat andere
-  // Auszahlungsregeln und darf nicht in denselben Topf — deshalb wird hier
-  // ausdrücklich auf die Drei-Wege-Schreibweisen geprüft und nicht auf
-  // "handicap" als Teilwort.
+  // Nur die Drei-Wege-Schreibweisen. "Handicap" ohne Zusatz ist bei Kambi die
+  // zweiwegige asiatische Linie und gehört nicht ins europäische Handicap.
   const eh = /^(drei-wege-handicap|3-wege[- ]handicap)/.exec(l)
   if (eh) {
     const period = suffixPeriod(l.slice(eh[0].length))
@@ -182,18 +135,8 @@ export function toMarket(
   if (l === 'gerade/ungerade' || l === 'ungerade/gerade')
     return { type: 'OE', period: 'FT', line: null, subject: null }
 
-  // Nicht unterstützt, aber bekannt — ohne Warnung verwerfen:
-  // Doppelte Chance und Unentschieden-keine-Wette (keine Zerlegung),
-  // Korrektes Ergebnis (zu viele Seiten), Asian- und Zwei-Wege-Handicap
-  // (Rückerstattung), Ecken/Schüsse/Karten (anderer Gegenstand), Nächstes Tor
-  // und Intervalle (Restspielzeit), Spieler- und Opta-Wetten.
-  //
-  // Die Liste ist länger als die der wirklich unbekannten Märkte, und das ist
-  // ihr Zweck: Kambi führt Ecken und Torschüsse **je Team** und je Intervall,
-  // also mit dem Teamnamen im Kriterium. Jede Partie erzeugt dadurch eigene
-  // Zeilen, die den Bericht unter `/api/diagnostics` fluten und die paar
-  // echten Lücken unsichtbar machen. Was hier steht, ist geprüft und
-  // absichtlich draußen — nicht übersehen.
+  // Bekannt und bewusst draußen — still verwerfen. Kambi führt Ecken und
+  // Schüsse je Team und Intervall; ungefiltert fluten sie `/api/diagnostics`.
   const known =
     /doppelte chance|unentschieden keine wette|korrektes ergebnis|asian|^handicap$|ecken|eckstöße|eckbälle|schüsse|paraden|opta|karten|nächste|nächstes tor|erstes tor|art des nächsten tors|interval|\d+:\d{2}-\d+:\d{2}|siegt|gewinnt mindestens|spieler|trifft|erzielt|vorlage|halbzeit\/|torschütze|tor in beiden|eigentor|elfmeter/.test(
       l,
@@ -203,23 +146,9 @@ export function toMarket(
 }
 
 /**
- * Tennis-Kriterien.
- *
- * Eigene Tabelle statt eines Zweigs in `toMarket`: die Fußball-Zuordnung
- * arbeitet mit Präfixen wie "gesamttore", und Tennis führt daneben ein halbes
- * Dutzend Kriterien, die strukturell **identisch** aussehen und Verschiedenes
- * bedeuten. Eine Partie trägt gleichzeitig:
- *
- *   [Satz-Handicap]     Handicap  OT_ONE@-1.5 / OT_TWO@1.5
- *   [Game Handicap]     Handicap  OT_ONE@3.5  / OT_TWO@-3.5
- *   [Gesamtsätze]       Über/Unter @2.5
- *   [Spiele insgesamt]  Über/Unter @22.5
- *
- * Beide Handicaps sind zweiseitig, tragen ihre Linie am Outcome und
- * unterscheiden sich **nur** in der Beschriftung. Ohne die Einheit im
- * Schlüssel fiele ein Satz-Handicap über −1,5 auf dasselbe Fach wie ein
- * Spiele-Handicap über −1,5 — und dann würde ein Satz-Bein gegen ein
- * Spiele-Bein gerechnet.
+ * Tennis-Kriterien. Satz- und Spiele-Handicap sehen strukturell gleich aus
+ * und unterscheiden sich nur in der Beschriftung — deshalb trägt der
+ * Schlüssel die Einheit.
  */
 function toTennisMarket(
   offer: BetOffer,
@@ -230,13 +159,7 @@ function toTennisMarket(
   const label = offer.criterion?.label ?? ''
   const l = label.toLowerCase().replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim()
 
-  /**
-   * Die Linie steht bei den Handicaps **spiegelbildlich** an den beiden Seiten
-   * (Heim 3.5, Gast −3.5). Maßgeblich ist immer die Heimsicht, also OT_ONE —
-   * würde jede Auswahl ihre eigene Linie mitbringen, fielen die beiden Beine
-   * desselben Marktes auf zwei verschiedene Schlüssel und der Markt käme nie
-   * vollständig zustande.
-   */
+  /** Handicap-Linien stehen gespiegelt an beiden Seiten; maßgeblich ist Heim (OT_ONE). */
   const homeLine = (): number | null => {
     const one = (offer.outcomes ?? []).find((o) => o.type === 'OT_ONE')
     return dec(one?.line)
@@ -244,7 +167,6 @@ function toTennisMarket(
   /** Bei Über/Unter tragen beide Seiten denselben Wert. */
   const anyLine = (): number | null => dec((offer.outcomes ?? [])[0]?.line)
 
-  // "Satz 1" / "Satz 2" — Satzsieger, zweiseitig.
   const setWinner = /^satz ([1-5])$/.exec(l)
   if (setWinner) return { type: '2WAY', period: `S${setWinner[1]}` as CanonicalMarket['period'], line: null, subject: null }
 
@@ -264,7 +186,7 @@ function toTennisMarket(
     return line === null ? null : { type: 'OU', period: 'FT', line, subject: null, unit: 'SETS' }
   }
 
-  // "Spiele insgesamt" (ganze Partie) und "Spiele insgesamt - Satz 1".
+  // "Spiele insgesamt" und "Spiele insgesamt - Satz 1".
   const totalGames = /^spiele insgesamt(?: - satz ([1-5]))?$/.exec(l)
   if (totalGames) {
     const line = anyLine()
@@ -273,7 +195,7 @@ function toTennisMarket(
     return { type: 'OU', period, line, subject: null, unit: 'GAMES' }
   }
 
-  // "Gesamte Spiele gewonnen von Alex Hernandez" — das Spieler-Total.
+  // "Gesamte Spiele gewonnen von Alex Hernandez" — Spieler-Total.
   if (l.startsWith('gesamte spiele gewonnen von')) {
     const line = anyLine()
     if (line === null) return null
@@ -286,18 +208,9 @@ function toTennisMarket(
     return subject ? { type: 'TEAM_OU', period: 'FT', line, subject, unit: 'GAMES' } : null
   }
 
-  // Bekannt und bewusst draußen — ohne Warnung verwerfen.
-  //
-  // "Meisten Asse" und "Die meisten Spiele" tragen ein OT_CROSS, sind also
-  // dreiseitig und im Zwei-Weg-Modell nicht abbildbar. Tiebreaks, Breakpunkte
-  // und Aufschlagspiele haben einen anderen Gegenstand als Sätze oder Spiele.
-  // "Satzwetten" und "Korrektes Ergebnis" haben zu viele Seiten.
-  // Bei laufenden Partien öffnet Kambi zusätzlich Märkte auf **einzelne Spiele
-  // und Punkte** ("Satz 3 - Spiel 8", "Punkt 2 - Satz 3, Spiel 7", "Deuce in
-  // Satz 2 - Spiel 3"). Davon gibt es je Partie dutzende, sie leben Sekunden
-  // und haben bei keinem anderen Buch ein Gegenstück. Ungefiltert stellen sie
-  // allein den halben Bericht unter `/api/diagnostics` und verdecken die
-  // echten Lücken.
+  // Bekannt und bewusst draußen: dreiseitige Märkte (OT_CROSS), andere
+  // Gegenstände (Tiebreaks, Breaks, Aufschlag) und Live-Märkte auf einzelne
+  // Spiele und Punkte, die sonst den halben Bericht füllen.
   const known =
     /^(satzwetten|korrektes ergebnis|meisten asse|die meisten spiele|tiebreaks insgesamt|gesamtes break punkte|total number of service breaks|asse insgesamt|doppelfehler)/.test(
       l,
@@ -305,7 +218,6 @@ function toTennisMarket(
     /gewinnt mindestens einen satz|gewinnt sein .*aufschlagspiel|erstaufschlag|holt den ersten|breakpunkt|as$|aufschlag/.test(
       l,
     ) ||
-    // Spiel- und Punktebene sowie deren Sonderformen — sämtlich Live-Märkte.
     /spiel \d+|punkt \d+|deuce|tie ?break|gesamtpunktzahl|game handicap - satz|satz \d+ - spiel/.test(l)
   if (!known) noteUnmapped(bookId, `TENNIS ${label} | ${offer.betOfferType?.name ?? ''}`)
   return null
@@ -314,21 +226,10 @@ function toTennisMarket(
 /* ------------------------ Basketball, Eishockey, Volleyball, Darts u. a. */
 
 /**
- * Märkte der übrigen Sportarten — abgebildet aus dem **englischen** Kriterium.
- *
- * Kambi baut es nach einer festen Grammatik: ein Grundbegriff, dahinter durch
- * " - " getrennte Zusätze für Abschnitt und Verlängerung.
- *
- *   Moneyline - Including Overtime
- *   Puck Line - Regular Time
- *   Total Points by Chicago Sky (W) - 2nd Half - Including Overtime
- *   Total Points - Set 2
- *
- * Damit ist die Verlängerungsfrage hier **nicht** zu erraten: sie steht als
- * Zusatz da, und zwar auf beiden Seiten. Eishockey führt jede Wette doppelt,
- * einmal "Regular Time" und einmal "Including Overtime and Penalty Shootout".
- * Wer die beiden zusammenwirft, rechnet ein Über 7,5 mit Verlängerung gegen
- * ein Unter 7,5 ohne — und verliert genau dann, wenn verlängert wird.
+ * Übrige Sportarten aus dem **englischen** Kriterium: Grundbegriff plus
+ * Zusätze für Abschnitt und Verlängerung ("Puck Line - Regular Time",
+ * "Total Points by X - 2nd Half - Including Overtime"). Eishockey führt jede
+ * Wette mit und ohne Verlängerung — die dürfen nie gegeneinander laufen.
  */
 function toCourtMarket(
   offer: BetOffer,
@@ -351,10 +252,7 @@ function toCourtMarket(
   const line = dec(outcome.line)
   const hasDraw = (offer.outcomes ?? []).some((o) => o.type === 'OT_CROSS')
 
-  /**
-   * Ein Zusatz benennt entweder den Abschnitt oder die Verlängerungsregel.
-   * `null` heißt: unbekannt — und dann ist es ein anderer Markt.
-   */
+  /** Abschnitt oder Verlängerungsregel eines Zusatzes; `null`: unbekannt. */
   const abschnitt = (s: string): Period | 'ot' | null => {
     const q = /^quarter ([1-4])$/.exec(s)
     if (q) return `Q${q[1]}` as Period
@@ -369,19 +267,8 @@ function toCourtMarket(
     return null
   }
 
-  /**
-   * **Jeder** Zusatz muss verstanden sein, sonst wird verworfen.
-   *
-   * Vorher wurde nur der Grundbegriff geprüft und alles dahinter ignoriert.
-   * Damit ging "Quarter 1 - First to 15 Points" als Viertelsieger durch: der
-   * Grundbegriff "quarter 1" passte, der Zusatz „wer zuerst 15 Punkte hat"
-   * fiel unter den Tisch. Fünf solcher Rennen — 10, 15, 20, 25 und 30 Punkte —
-   * landeten damit auf demselben Schlüssel wie der echte Viertelsieger.
-   *
-   * Ein unbekannter Zusatz bedeutet fast immer einen anderen Markt. Ihn zu
-   * verwerfen kostet eine Gelegenheit; ihn durchzulassen erzeugt Vergleiche
-   * zwischen Wetten, die nichts miteinander zu tun haben.
-   */
+  // Jeder Zusatz muss verstanden sein: "Quarter 1 - First to 15 Points" ist
+  // ein Punkterennen, kein Viertelsieger.
   let period: Period = 'FT'
   for (const s of suffixes) {
     const a = abschnitt(s)
@@ -391,8 +278,7 @@ function toCourtMarket(
     }
     if (a !== 'ot') period = a
   }
-  // Steht der Abschnitt im Grundbegriff selbst ("Quarter 1", "Set 2"), zählt
-  // er ebenfalls — dort ist er aber optional, nicht jeder Markt trägt ihn.
+  // Abschnitt im Grundbegriff selbst ("Quarter 1", "Set 2").
   const ausBasis = abschnitt(base)
   if (ausBasis && ausBasis !== 'ot') period = ausBasis
 
@@ -403,10 +289,8 @@ function toCourtMarket(
     return undefined
   }
 
-  // Bekannt und bewusst draußen. "Draw No Bet" erstattet beim Unentschieden
-  // den Einsatz und ist damit **keine** zweiseitige Wette; würde man es als
-  // solche führen, käme gegen ein echtes 2-Weg-Angebot eine Scheinrendite
-  // heraus, weil das Remis-Risiko fehlt.
+  // Bekannt und bewusst draußen. "Draw No Bet" erstattet beim Remis und ist
+  // keine echte Zweiwegwette.
   if (
     /^(draw no bet|correct score|double chance|winning margin|half time\/full time|race to|highest scoring|which team|method of|\d+\+ )/.test(
       base,
@@ -415,30 +299,19 @@ function toCourtMarket(
   )
     return null
 
-  // Siegwette. Ein Kreuz unter den Ausgängen entscheidet zwischen drei- und
-  // zweiseitig — nicht die Sportart: bei Kambi hat dieselbe Eishockeypartie
-  // "Match Odds - Regular Time" mit Kreuz und "Moneyline - Including
-  // Overtime" ohne.
+  // Siegwette: das Kreuz unter den Ausgängen entscheidet über drei- oder
+  // zweiseitig, nicht die Sportart.
   if (/^(moneyline|match odds|to win the match|winner)$/.test(base))
     return { type: hasDraw ? '1X2' : '2WAY', period, line: null, subject: null }
 
-  // "Quarter 3" / "Set 1" ganz ohne Grundbegriff ist der Abschnittssieger.
+  // "Quarter 3" / "Set 1" ohne Grundbegriff ist der Abschnittssieger.
   if (/^(quarter [1-4]|period [1-3]|set [1-5]|1st half|2nd half)$/.test(base))
     return { type: hasDraw ? '1X2' : '2WAY', period, line: null, subject: null }
 
   if (/^(point spread|puck line|handicap|set handicap|spread|game handicap|leg handicap)$/.test(base)) {
-    // **Nicht** `outcome.line`, sondern die Linie der Heimauswahl.
-    //
-    // Kambi hängt die Linie an jeden Ausgang einzeln, und zwar gespiegelt:
-    // "Universidad De Concepción[-12500] / Mun. Puente Alto[12500]". Wer sie
-    // je Ausgang liest, legt die beiden Beine derselben Wette auf **zwei
-    // verschiedene Schlüssel** — das Heimbein auf −12,5, das Auswärtsbein auf
-    // +12,5. Dort trifft es dann auf das Heimbein eines ganz anderen
-    // Handicaps und ergibt eine Rendite, die es nicht gibt: gemessen 24,6 %
-    // auf "Portland Fire −5,5", wo in Wahrheit zwei verschiedene Linien
-    // gegeneinander standen.
-    //
-    // Das Modell führt die Linie aus Heimsicht, also ist OT_ONE maßgeblich.
+    // Die Linie der Heimauswahl, nicht `outcome.line`: sie steht gespiegelt an
+    // jedem Ausgang, und je Ausgang gelesen landeten die Beine einer Wette
+    // auf zwei Schlüsseln (gemessene Scheinrendite: 24,6 %).
     const homeLine = dec((offer.outcomes ?? []).find((o) => o.type === 'OT_ONE')?.line)
     if (homeLine === null) return null
     const unit = /set/.test(base) ? unitOf('sets') : /leg/.test(base) ? unitOf('legs') : unitOf('points')
@@ -458,13 +331,12 @@ function toCourtMarket(
     if (total[2]) return { type: 'OE', period, line: null, subject: null }
     if (line === null) return null
 
-    // Team-Total: der Mannschaftsname steht hinter "by".
+    // Team-Total: der Mannschaftsname steht hinter "by". Passt er zu beiden
+    // Seiten ähnlich gut, verwerfen statt raten.
     if (total[3]) {
       const who = total[3]
       const h = tokenSimilarity(teamTokens(who), teamTokens(home))
       const a = tokenSimilarity(teamTokens(who), teamTokens(away))
-      // Derselbe Abstand wie beim Zusammenführen der Partien: ein Name, der zu
-      // beiden Seiten gleich gut passt, wird verworfen statt geraten.
       if (Math.max(h, a) < 0.5 || Math.abs(h - a) < 0.25) return null
       return { type: 'TEAM_OU', period, line, subject: h > a ? 'HOME' : 'AWAY', unit }
     }
@@ -510,8 +382,7 @@ function toOutcomes(
 ): RawOutcome[] {
   const out: RawOutcome[] = []
   for (const offer of offers) {
-    // Bei Tennis hängt die Linie am Markt, nicht an der einzelnen Auswahl —
-    // deshalb einmal je Wettangebot bestimmen statt je Outcome.
+    // Im Tennis hängt die Linie am Angebot — einmal je Angebot bestimmen.
     const tennisMarket = sport === 'TENNIS' ? toTennisMarket(offer, home, away, bookId) : null
     if (sport === 'TENNIS' && !tennisMarket) continue
 
@@ -532,15 +403,7 @@ function toOutcomes(
 }
 
 
-/**
- * Kambis Pfadname je Sportart, gemessen am Gruppenbaum (`group.json`).
- *
- * Der Baum nennt 34 Sportarten; hier stehen die acht, die das Modell führt.
- * Kambi ist derzeit die ergiebigste Quelle für die neuen Sportarten, weil die
- * Sommerligen mitlaufen: 86 Partien American Football (CFL), 20 Basketball,
- * 15 Darts und 10 Eishockey (AIHL) — dort, wo die deutschen Bücher Ende Juli
- * gar nichts anbieten.
- */
+/** Kambis Pfadname je Sportart (`group.json`). */
 const SPORTS: { sport: Sport; path: string }[] = [
   { sport: 'FOOTBALL', path: 'football' },
   { sport: 'TENNIS', path: 'tennis' },
@@ -566,7 +429,6 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
     return {
       bookmakerId: brand.id,
       bookEventId: String(e.id),
-      // Kambi liefert keine Sportradar-ID — Matching läuft über Namen + Zeit.
       sportradarId: null,
       sport: SPORT_LABEL[sport.sport],
       league: path.slice(1).join(' — ') || e.group || 'Unbekannt',
@@ -574,9 +436,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
       away,
       startTime: new Date(e.start).toISOString(),
       isLive: e.state === 'STARTED',
-      // Der Kambi-Client routet über den Hash: `/de-de/sportwetten#event/{id}`.
-      // Der frühere Pfad `/de-de/sports/event/{id}` war bei LeoVegas eine
-      // 404-Seite — jede Partie musste von Hand gesucht werden.
+      // Der Kambi-Client routet über den Hash.
       url: `https://${brand.webHost}/de-de/sportwetten#event/${e.id}`,
       outcomes,
       fetchedAt: new Date().toISOString(),
@@ -592,8 +452,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
       const cutoff = Date.now() + ctx.windowMs
       const out: RawEvent[] = []
 
-      // Je Sportart ein Abruf. Fällt einer aus, kostet das nicht die andere
-      // Sportart — bei Kambi hängen beide am selben Host und derselben Sperre.
+      // Je Sportart ein Abruf; ein Ausfall kostet nur diese Sportart.
       const pages = await Promise.allSettled(
         SPORTS.map((s) =>
           fetchJson<{ events?: { event: KambiEvent; betOffers?: BetOffer[] }[] }>(
@@ -627,21 +486,10 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
   }
 }
 
-/**
- * Kennung `leode`, nicht `leo` — das ist ein **anderes Buch**.
- *
- * Nachgemessen am 6. September 2026: die Website leovegas.de fragt die
- * Offering-API unter `leode` ab. `leo` liefert 271 Fußballpartien, `leode`
- * 322, gemeinsam haben sie nur 58 — und von 43 gemeinsamen 1X2-Märkten
- * weichen 7 in der Quote ab (Juventus – Milan: 2,75/1,80/4,80 gegen
- * 2,85/1,90/5,10). Mit `leo` verglich der Scanner also Quoten, die auf
- * leovegas.de gar nicht setzbar waren, und jeder dritte Tiefenlink lief auf
- * eine Partie, die es dort nicht gab.
- */
+/** Kennung `leode`, nicht `leo` — das ist ein anderes Buch mit anderen Quoten. */
 export const leovegas = makeAdapter({
   id: 'leovegas',
   name: 'LeoVegas',
   code: 'leode',
   webHost: 'www.leovegas.de',
 })
-

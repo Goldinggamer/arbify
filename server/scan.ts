@@ -3,25 +3,11 @@ import { noteCollision } from './diagnostics.ts'
 import type { CanonicalMarket, MatchedEvent, Side } from './types.ts'
 
 /**
- * Sucht in zusammengeführten Events nach Arbitrage.
- *
- * Ein Markt kommt nur in Frage, wenn *alle* seine Seiten vorhanden sind und
- * die Bestquoten von mindestens zwei verschiedenen Buchmachern stammen.
- * Beides ist eine Sicherheitsschranke: ein fehlendes Bein würde die Summe
- * der impliziten Wahrscheinlichkeiten künstlich drücken und damit eine
- * Arbitrage vortäuschen, die gar nicht existiert.
+ * Arbitrage-Suche über zusammengeführte Partien. Begründung der Schranken:
+ * docs/schutzschranken.md.
  */
 
-/**
- * Eine Quote ohne Einsatzgrenze.
- *
- * Limits wurden bewusst wieder ausgebaut: kein Anbieter liefert sie über seine
- * öffentlichen Endpunkte, geschätzte Werte waren also der Normalfall — und die
- * echte Grenze steht ohnehin erst im Wettschein der angemeldeten Sitzung, wo
- * sie sich von der ausgeloggten Ansicht unterscheiden kann. Eine Zahl, die
- * jeder Nutzer vor dem Setzen selbst prüfen muss, gehört nicht in die
- * Einsatzaufteilung.
- */
+/** Eine Quote ohne Einsatzgrenze — Limits liefert kein Anbieter öffentlich. */
 type ScanQuote = {
   bookmakerId: string
   odds: number
@@ -56,125 +42,36 @@ export type ScanOpportunity = {
 
 const STALE_MS = 60_000
 
-/**
- * Harte Untergrenze für die Summe der impliziten Wahrscheinlichkeiten.
- *
- * Entspricht rund 33 % Rendite. Ein Wert darunter ist kein guter Fund, sondern
- * mit an Sicherheit grenzender Wahrscheinlichkeit ein Datenfehler: verglichene
- * Märkte, die nicht dasselbe bedeuten (Restspielzeit statt Gesamtspiel,
- * Team-Tore statt Gesamttore, vertauschtes Heimrecht). Solche Fälle werden
- * verworfen und gezählt, damit sie in der Diagnose auffallen statt Geld zu
- * kosten.
- */
+/** Implizite Summe darunter (≈ 33 % Rendite): praktisch immer ein Datenfehler — verwerfen und zählen. */
 const MIN_PLAUSIBLE_IMPLIED = 0.75
 
 /**
- * Ab hier gilt ein Fund als erklärungsbedürftig, aber nicht als falsch.
- *
- * Früher lag die harte Grenze bei 0,90 — das entspricht 11,1 % Rendite, und
- * damit war *jeder* Fund darüber unsichtbar. Genau die interessanten Fälle
- * fielen also stillschweigend heraus: ein Anbieter, der eine Quote zu spät
- * nachzieht, erzeugt durchaus 15 oder 20 %. Nur sind das eben auch die Werte,
- * die ein Mapping-Fehler erzeugt.
- *
- * Deshalb jetzt zweistufig: unter `MIN_PLAUSIBLE_IMPLIED` verwerfen, zwischen
- * beiden Schwellen anzeigen und mit `implausible-high` markieren. Die
- * Entscheidung, ob die Quote echt ist, trifft damit der Nutzer am Wettschein —
- * er sieht den Fund überhaupt erst, kann ihn aber nicht mit einer stillen
- * Annahme verwechseln.
+ * Darunter (≈ 11 % Rendite) wird ein Fund angezeigt, aber als
+ * `implausible-high` markiert: eine nachhinkende Quote und ein
+ * Zuordnungsfehler sehen gleich aus.
  */
 const SUSPICIOUS_IMPLIED = 0.9
 
-/**
- * Obergrenze für die Quote eines einzelnen Beins.
- *
- * Bei Quote 71 entfallen auf dieses Bein 1,4 % des Einsatzes — der gesamte
- * rechnerische Gewinn hängt dann daran, dass ausgerechnet dieser eine,
- * offensichtlich veraltete Kurs noch angenommen wird. Solche Lottoschein-Beine
- * sind keine Arbitrage, sondern ein Ausführungsrisiko mit Renditeschild.
- */
+/** Ein Bein darüber trägt kaum Einsatz, aber das ganze Ausführungsrisiko. */
 const MAX_LEG_ODDS = 30
 
-/**
- * Mindestvorlauf bis zum Anpfiff, in Minuten.
- *
- * Eine Arbitrage ist nur so viel wert wie die Zeit, sie zu platzieren. Wer
- * erst noch Geld beim zweiten Buchmacher einzahlen muss, braucht Vorlauf —
- * bei zu knapper Zeit droht dasselbe wie bei Live-Wetten: Einzahlung ist
- * durch, Quote ist weg, Geld sitzt hinter einer Umsatzbedingung fest.
- * Unterschreitet ein Fund diese Grenze, wird er markiert, nicht verworfen —
- * wer sein Kapital bereits verteilt hat, kann ihn trotzdem nutzen.
- */
+/** Weniger Vorlauf bis zum Anpfiff wird markiert (`short-notice`), nicht verworfen. */
 const MIN_LEAD_MINUTES = 30
 
-/**
- * Marktfamilien, die über Buchmacher hinweg verglichen werden dürfen.
- *
- * Team-Über/Unter war lange ausgeschlossen: die Familie erzeugte regelmäßig
- * Vergleiche mit impliziten Summen von 66–90 %, während 1X2, Über/Unter und
- * Handicap sauber blieben. Die Ursache lag nicht in der Familie, sondern in
- * einer einzigen Quelle — Sportwetten.de beschriftet die Halbzeit-Variante mit
- * „1. HZ" statt „1. Halbzeit". Der Adapter erkannte die Kurzform nicht, legte
- * 1.467 Halbzeit-Märkte als Ganzspiel ab, und im Bestand fielen sie auf
- * denselben Schlüssel wie die echten Ganzspiel-Märkte. Da je Seite die höchste
- * Quote gewinnt, setzte sich dort das Halbzeit-Über durch und wurde gegen ein
- * Ganzspiel-Unter gerechnet (siehe `periodOf` in `adapters/insic.ts`).
- *
- * Nach der Korrektur: von 491 buchmacherübergreifenden Vergleichen liegen noch
- * 3 unter 90 %, und alle drei hängen an einem Bein mit Quote 15–48 — dieselben
- * Ausreißer, die `MAX_LEG_ODDS` und `MIN_PLAUSIBLE_IMPLIED` in jeder anderen
- * Familie ebenfalls abfangen. Damit ist die Familie so belastbar wie die
- * übrigen und wird gegengerechnet.
- */
-/**
- * `2WAY` und `AH` kommen aus dem Tennis: Matchsieger und Satzsieger sind
- * zweiseitig, ebenso beide Handicaps. Ohne sie hier fällt **jeder**
- * Tennis-Markt lautlos aus der Auswertung — gemessen an 62 über zwei Bücher
- * zusammengeführten Partien waren es null Vergleiche, obwohl die Quoten
- * vollständig im Bestand standen.
- */
+/** Marktfamilien, die über Buchmacher hinweg verglichen werden. */
 const COMPARABLE: ReadonlySet<string> = new Set(['1X2', '2WAY', 'OU', 'BTTS', 'EH', 'AH', 'OE', 'TEAM_OU'])
 
 /**
- * Ganzzahlige Torgrenze — "Über/Unter 2,0" statt "2,5".
- *
- * Solche Linien sind keine saubere Zweiteilung: fallen genau zwei Tore, wird
- * bei beiden Anbietern annulliert und der Einsatz kommt zurück. Lange waren sie
- * deshalb in drei Adaptern schlicht verworfen — und weil AdmiralBet sie behielt,
- * standen sich zwei Bestände gegenüber, die nie zueinander fanden: Über/Unter
- * 1,0 kam über alle sechzehn Bücher hinweg auf **null** Vergleiche, obwohl
- * AdmiralBet, VBET und Winamax den Markt alle drei führen.
- *
- * Verworfen gehören sie nicht. Liegen beide Beine auf **derselben** ganzen
- * Linie, ist der Push-Fall der einzige, in dem die Rendite entfällt — und er
- * kostet nichts, weil beide Einsätze zurückkommen. In jedem anderen Ausgang
- * gewinnt genau ein Bein, die Rechnung stimmt also unverändert. Der schlechteste
- * Fall ist die Null, nicht der Verlust.
- *
- * Der Nutzer muss davon trotzdem wissen: eine ausgewiesene Rendite von 3 %, die
- * mit gewisser Wahrscheinlichkeit 0 % wird, ist etwas anderes als eine, die es
- * nicht wird. Deshalb Warnung statt Filter.
+ * Ganzzahlige Linie ("Über/Unter 2,0"): fällt genau die Linie, kommen beide
+ * Einsätze zurück. Kein Verlust, aber die Rendite entfällt — deshalb
+ * Warnung (`push-line`) statt Filter.
  */
 const isWholeLine = (line: number | null): boolean => line !== null && Math.abs(line * 2) % 2 === 0
 
 /**
- * Muss der Nutzer die Verlängerungsregel selbst nachsehen?
- *
- * In Basketball, Eishockey und American Football gibt es zu jeder Linie zwei
- * Wetten: eine mit Verlängerung und eine ohne. Gemessen an bwin markieren die
- * Bücher die **reguläre** Spielzeit ausdrücklich („Drei Wege (Nur reguläre
- * Spielzeit)", „Gesamt (inkl. Verlängerung und Penalties)") — Schweigen heißt
- * also mit Verlängerung, und genau so ordnen die Adapter zu.
- *
- * Nur: das ist eine Regel über die Beschriftung, keine Garantie über die
- * Wettbedingungen. Schweigt ein Buch **und** wertet trotzdem nur die reguläre
- * Spielzeit, sind die beiden Beine nicht deckungsgleich, und der Fund verliert
- * genau dann, wenn es in die Verlängerung geht.
- *
- * Betroffen sind nur die Linienmärkte. Die 2-Weg-Siegwette braucht keine
- * Warnung: ohne Unentschieden **muss** sie die Verlängerung einschließen, sonst
- * bliebe ein Ausgang unbezahlt. Und `RT` ist ausdrücklich zugeordnet, da ist
- * nichts offen.
+ * Linienmärkte über die ganze Partie in Sportarten mit Verlängerung: die
+ * Adapter lesen „ohne Angabe“ als „mit Verlängerung“. Das ist eine Regel über
+ * Beschriftungen, keine Garantie — der Nutzer soll es prüfen (`overtime`).
  */
 function needsOvertimeCheck(sportLabel: string, m: CanonicalMarket): boolean {
   if (m.period !== 'FT') return false
@@ -197,15 +94,7 @@ type Quote = {
 
 const toScanQuote = (q: Quote): ScanQuote => ({ bookmakerId: q.bookmakerId, odds: q.odds })
 
-/**
- * Wie nah die besten Quoten zweier Bücher an einer Arbitrage sind.
- *
- * Bei drei Anbietern ist eine echte Arbitrage selten — die Marge der Bücher
- * liegt bei 5–8 %. Diese Auswertung zeigt trotzdem, dass Matching und
- * Markt-Zuordnung greifen: sie listet die knappsten Vergleiche, unabhängig
- * davon ob sie profitabel sind. Ein Wert nahe 100 % heißt "fast eine Arb",
- * unter 100 % wäre eine.
- */
+/** Knappste spielbare Vergleiche — Beleg, dass Matching und Zuordnung greifen. */
 export type MarginRow = {
   event: string
   /** Sportart, damit die Oberfläche die Liste zum Sportfilter passend hält */
@@ -217,12 +106,8 @@ export type MarginRow = {
 }
 
 /**
- * "Hitze" eines Events: die niedrigste implizite Summe über alle vollständigen
- * Märkte. Je näher an 1, desto näher an einer Arbitrage.
- *
- * Damit entscheidet der Scheduler, welche Events im Sekundentakt nachgeladen
- * werden. Alle 500+ Events so oft abzufragen wäre weder nötig noch möglich —
- * interessant sind die, die kurz vor einer Arbitrage stehen.
+ * „Hitze“ einer Partie: niedrigste implizite Summe über alle vollständigen
+ * Märkte. Danach wählt der schnelle Takt aus, was nachgeladen wird.
  */
 export function eventHeat(ev: MatchedEvent): number {
   if (ev.sources.length < 2) return Infinity
@@ -259,13 +144,7 @@ export function scanForArbitrage(
   for (const ev of events) {
     if (ev.sources.length < 2) continue
 
-    // Laufende Spiele werden nicht bewertet — eine Produktentscheidung mit
-    // betrieblichem, nicht technischem Grund: das Kapital liegt nicht schon
-    // bei allen Buchmachern. Bis eingezahlt ist, hat sich die Live-Quote
-    // bewegt, und wenn die Rendite dann weg ist, sitzt das Geld fest, weil
-    // Auszahlungen in der Regel eine Umsatzbedingung haben. Das Risiko ist
-    // einseitig. Live-Daten werden weiter erfasst (Kontext, Diagnose), führen
-    // aber zu keiner ausgewiesenen Arbitrage.
+    // Laufende Spiele werden nicht bewertet (docs/schutzschranken.md#warum-kein-live).
     if (ev.isLive) continue
 
     // marketKey → side → Quoten aller Buchmacher
@@ -295,41 +174,15 @@ export function scanForArbitrage(
       const required = SIDES[market.type]
       if (required.some((s) => !sides.get(s)?.length)) continue
 
-      /**
-       * Fällt bei einem Buch dieselbe Seite mehrfach an, sind zwei
-       * verschiedene Märkte auf einen Schlüssel gefallen — immer ein
-       * Zuordnungsfehler in einem Adapter, denn dieselbe Wette gibt es bei
-       * einem Anbieter nur einmal.
-       *
-       * Gerechnet wird trotzdem mit der **besten** Quote. Hier stand
-       * zwischenzeitlich die schlechteste, um eine Verwechslung nicht zu einer
-       * erfundenen Arbitrage werden zu lassen. Das ist die falsche Abwägung:
-       * es unterdrückt auch **echte** Funde, und zwar unsichtbar — eine
-       * Arbitrage, die nie angezeigt wird, beschwert sich nicht. Ein falscher
-       * Fund fällt beim Gegenprüfen im Wettschein sofort auf, ein
-       * verschluckter nie.
-       *
-       * Stattdessen wird der Fund markiert (`market-collision`). Damit ist er
-       * sichtbar, prüfbar und meldbar — und die Ursache gehört in den Adapter,
-       * nicht in eine Abfederung an dieser Stelle.
-       */
+      // Mehrere Quoten eines Buchs auf derselben Seite: entweder ein
+      // Quotenboost neben der normalen Quote (erwartet) oder zwei verschiedene
+      // Märkte auf einem Schlüssel (Zuordnungsfehler). Letzteres wird gezählt
+      // und markiert, gerechnet wird trotzdem mit der besten Quote — ein
+      // verschluckter echter Fund fiele nie auf, ein falscher am Wettschein schon.
       let collided = false
       let boosted = false
       const best = required.map((side) => {
         const quotes = sides.get(side)!
-
-        // Mehrere Quoten eines Buchs auf derselben Seite haben genau **zwei**
-        // Ursachen, und die müssen auseinandergehalten werden:
-        //
-        //   Quotenboost   Betano führt "Endergebnis SuperQuoten" neben
-        //                 "Endergebnis" — dieselbe Wette, bessere Quote. Das
-        //                 ist erwartet und kein Fehler.
-        //   Verwechslung  zwei verschiedene Märkte auf einem Schlüssel, etwa
-        //                 "4. Viertel" und "1. Halbzeit". Das ist ein
-        //                 Zuordnungsfehler im Adapter.
-        //
-        // Ohne die Unterscheidung würde jeder beworbene Fund fälschlich als
-        // "Marktzuordnung unklar" markiert — und die Markierung damit wertlos.
         const perBook = new Map<string, Quote[]>()
         for (const q of quotes) {
           const list = perBook.get(q.bookmakerId)
@@ -348,23 +201,13 @@ export function scanForArbitrage(
         return { side, quote, all: quotes }
       })
 
-      // Zwei Beine beim selben Buchmacher sind keine Arbitrage, sondern nur
-      // eine Marge unter null — die gibt es in der Praxis nicht.
+      // Alle Beine beim selben Buch sind keine Arbitrage.
       if (new Set(best.map((b) => b.quote.bookmakerId)).size < 2) continue
 
       const implied = best.reduce((s, b) => s + 1 / b.quote.odds, 0)
 
-      // Für die Vergleichsliste nur Märkte, die praktisch spielbar wären.
-      // Paare wie 31,00 gegen 1,01 stehen rechnerisch nah an einer Arbitrage,
-      // sind aber wegen Limits und Rundung nie eine — sie würden die Liste
-      // fluten und die wirklich interessanten Fälle verdecken.
-      // Zusätzlich zur Spielbarkeit auch die Plausibilität verlangen: ein
-      // Vergleich unter der Schranke beruht auf einem Datenfehler und gehört
-      // in die Ablehnungsliste, nicht in die Übersicht der knappsten Fälle.
-      // Für diese Liste bleibt die alte, strengere Schwelle stehen: sie soll
-      // zeigen, wie nah die Bücher beieinanderliegen. Ein Vergleich unter
-      // 90 % ist dafür kein Beleg, sondern ein Ausreißer — der gehört in die
-      // Trefferliste (mit Warnung) oder in die Ablehnungsliste, nicht hierher.
+      // Vergleichsliste: nur spielbare Quoten und nur plausible Summen —
+      // Ausreißer gehören in die Treffer- oder Ablehnungsliste, nicht hierher.
       const playable =
         best.every((b) => b.quote.odds >= 1.1 && b.quote.odds <= 15) &&
         implied >= SUSPICIOUS_IMPLIED
@@ -385,8 +228,6 @@ export function scanForArbitrage(
 
       if (!(implied < 1)) continue
 
-      // Ein einzelnes Bein mit absurd hoher Quote trägt kaum Einsatz, aber
-      // das ganze Ausführungsrisiko.
       if (best.some((b) => b.quote.odds > MAX_LEG_ODDS)) {
         rejected.push({
           event: `${ev.home} vs ${ev.away}`,
@@ -397,8 +238,6 @@ export function scanForArbitrage(
         continue
       }
 
-      // Unter der harten Grenze: verwerfen. Zwischen den Schwellen bleibt der
-      // Fund erhalten und bekommt weiter unten `implausible-high`.
       if (implied < MIN_PLAUSIBLE_IMPLIED) {
         rejected.push({
           event: `${ev.home} vs ${ev.away}`,
@@ -423,8 +262,7 @@ export function scanForArbitrage(
         warnings.push('push-line')
       if (needsOvertimeCheck(ev.sport, market)) warnings.push('overtime')
       if (collided) warnings.push('market-collision')
-      // Beworbene Quoten sind in der Regel einsatzbegrenzt und nicht für jedes
-      // Konto verfügbar — die Rendite steht also, der Einsatz womöglich nicht.
+      // Beworbene Quoten sind meist einsatzbegrenzt und nicht für jedes Konto da.
       if (boosted) warnings.push('promo-odds')
 
       const links: Record<string, string> = {}
