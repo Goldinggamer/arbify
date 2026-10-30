@@ -35,8 +35,6 @@ type Brand = {
   name: string
   code: string
   webHost: string
-  /** Abweichendes Muster für den Tiefenlink; sonst `/de-de/sports/event/{id}`. */
-  eventUrl?: (id: number) => string
 }
 
 type KambiOutcome = {
@@ -578,7 +576,7 @@ function makeAdapter(brand: Brand): BookmakerAdapter {
       // Der Kambi-Client routet über den Hash: `/de-de/sportwetten#event/{id}`.
       // Der frühere Pfad `/de-de/sports/event/{id}` war bei LeoVegas eine
       // 404-Seite — jede Partie musste von Hand gesucht werden.
-      url: brand.eventUrl?.(e.id) ?? `https://${brand.webHost}/de-de/sportwetten#event/${e.id}`,
+      url: `https://${brand.webHost}/de-de/sportwetten#event/${e.id}`,
       outcomes,
       fetchedAt: new Date().toISOString(),
     }
@@ -651,32 +649,3 @@ export const leovegas = makeAdapter({
   webHost: 'www.leovegas.de',
 })
 
-/**
- * 888sport — **italienisches Buch**, ausdrücklich so gewollt.
- *
- * Vorgeschichte: eine deutsche Kambi-Kennung für 888 existiert nicht. Alle
- * Kandidaten (`888de`, `888ger`, `888sportde`, `888at`, …) antworten mit
- * HTTP 400. Der Grund ist inzwischen belegt: 888sport.de läuft gar nicht mehr
- * auf Kambi, sondern auf **Spectate** (`spectate-web.888sport.de`, Bootstrap
- * per `POST /spectate/load/state`, Quoten danach über WebSocket). Das ist ein
- * eigener Adapter und steht noch aus.
- *
- * Bis dahin auf Wunsch die italienische Marke `888it`. Zwei Dinge dazu, damit
- * niemand die Zahlen falsch liest:
- *
- *  - Die Quoten sind **eigenständig**, nicht bloß ein Abbild von LeoVegas:
- *    von 228 gemeinsamen Partien weichen 209 im 1X2 ab. Als Vergleichsfläche
- *    taugt die Marke also.
- *  - Ein Bein hier ist aus Deutschland aber **nicht spielbar**. Nachgemessen:
- *    `sport.888casino.it` liefert von einer deutschen Leitung auf jeden
- *    Wettpfad HTTP 404, nur die Startseite antwortet. Deshalb heißt die Marke
- *    im Frontend „888sport (IT)" — der Zusatz steht an jedem Bein und der
- *    Tiefenlink zeigt auf die Startseite statt ins Leere.
- */
-export const sport888 = makeAdapter({
-  id: 'sport888',
-  name: '888sport (IT)',
-  code: '888it',
-  webHost: 'sport.888casino.it',
-  eventUrl: () => 'https://sport.888casino.it/',
-})

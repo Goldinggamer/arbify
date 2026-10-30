@@ -24,7 +24,7 @@ type StakeLeg = {
   share: number
 }
 
-export type ArbResult = {
+type ArbResult = {
   /** Summe der impliziten Wahrscheinlichkeiten (1/quote). < 1 => Arbitrage */
   implied: number
   isArb: boolean

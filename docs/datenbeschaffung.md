@@ -75,9 +75,10 @@ HttpOnly-Kekse, ohne die der AWS-Load-Balancer mit 403 antwortet;
 ausschließlich über einen WebSocket, dessen Abonnement-Format noch unbekannt
 ist. Der Adapter hat deshalb keine Tiefenstufe.
 
-Das italienische 888-Buch (Kambi, Marke `888it`) ist in `kambi.ts` gebaut,
-aber nicht in `server/adapters/index.ts` eingetragen: ein Bein dort ist aus
-Deutschland nicht setzbar, eine Arbitrage darüber also eine falsche Meldung.
+Das italienische 888-Buch (Kambi, Marke `888it`) ist bewusst nicht
+angebunden: ein Bein dort ist aus Deutschland nicht setzbar, eine Arbitrage
+darüber also eine falsche Meldung. Ein fertiger Adapter steht in der
+Git-Historie (`sport888` in `kambi.ts`).
 
 ### Weitere Eigenheiten
 

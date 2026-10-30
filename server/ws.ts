@@ -27,7 +27,7 @@ import { taped } from './tape.ts'
  *     hängen)
  */
 
-export type RpcOptions = {
+type RpcOptions = {
   url: string
   /** Zusätzliche Header für den Verbindungsaufbau, z.B. `Origin`. */
   headers?: Record<string, string>

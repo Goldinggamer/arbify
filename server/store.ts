@@ -33,7 +33,7 @@ const sportOf = (sport: string): Sport => sportFromLabel(sport) ?? 'FOOTBALL'
  * Aufrufer darauf — er bekommt **nie** den alten Stand zurückgereicht.
  */
 
-export type ScanSnapshot = {
+type ScanSnapshot = {
   opportunities: ScanOpportunity[]
   /** Knappste Markt-Vergleiche — Beleg, dass Matching und Mapping greifen */
   margins: MarginRow[]

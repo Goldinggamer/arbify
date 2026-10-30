@@ -76,7 +76,7 @@ export type AlertConfig = {
   updatedAt: string
 }
 
-export type AlertState = {
+type AlertState = {
   /** Fund-Kennung → Zeitpunkt der letzten Meldung */
   sent: Record<string, number>
   /** Zeitpunkte der jüngsten Meldungen, für die Mengenbegrenzung */
@@ -85,7 +85,7 @@ export type AlertState = {
 
 export const emptyState = (): AlertState => ({ sent: {}, recent: [] })
 
-export type Decision = {
+type Decision = {
   /** Was jetzt verschickt wird, beste Rendite zuerst. */
   send: Opportunity[]
   /** Was über der Schwelle lag, aber unterdrückt wurde. */

@@ -205,7 +205,7 @@ function bestTolerantMatch(index: IndexEntry[], ev: RawEvent, home: string[], aw
   return best
 }
 
-export type MatchStats = {
+type MatchStats = {
   /** Quellen, deren Ausrichtung gedreht werden musste */
   flipped: number
   /** Quellen, die wegen unklarer Zuordnung verworfen wurden */

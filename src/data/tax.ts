@@ -49,9 +49,9 @@
 // ist in dieser App bewusst keine Rechengröße: sie zieht ihn nirgends ab, die
 // Hinweistexte unten nennen ihn nur. Wird das je gewünscht, gehört er hierher.
 
-export type TaxMode = 'none' | 'stake' | 'gross' | 'profit'
+type TaxMode = 'none' | 'stake' | 'gross' | 'profit'
 
-export type BookTax = {
+type BookTax = {
   mode: TaxMode
   /** Handhabung belegt? Sonst gilt die vorsichtige Annahme „mit Steuer". */
   verified: boolean

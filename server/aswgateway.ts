@@ -2,7 +2,7 @@ import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import WebSocket from 'ws'
 import { taped, tapeMode } from './tape.ts'
 
-export type AswOptions = {
+type AswOptions = {
   url: string
   origin: string
   mandatorName: string
@@ -15,7 +15,7 @@ export type AswOptions = {
   maxStoreSize?: number
 }
 
-export type SnapshotItem = { kind?: number; type: string; entity?: { urn?: string } & Record<string, any> }
+type SnapshotItem = { kind?: number; type: string; entity?: { urn?: string } & Record<string, any> }
 
 type Pending = {
   resolve: (v: any) => void

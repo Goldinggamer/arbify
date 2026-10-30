@@ -12,7 +12,7 @@ export type BookmakerAdapter = {
   id: string
   name: string
   /** Wie der Anbieter erreicht wird — für Logging und Diagnose. */
-  transport: 'plain' | 'impit' | 'websocket' | 'browser'
+  transport: 'plain' | 'impit' | 'websocket'
 
   /**
    * Stufe 1 — breiter Sweep.

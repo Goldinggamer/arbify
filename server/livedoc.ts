@@ -29,7 +29,7 @@ import { taped } from './tape.ts'
  * dabei offen; teuer ist der Handschlag, nicht das Abo.
  */
 
-export type LiveDocOptions = {
+type LiveDocOptions = {
   /** Host ohne Schema, z.B. `sb-pp-defe.daznbet.de`. */
   host: string
   /** Dienstpfad, z.B. `/eventmaplivedocl1/livedoc`. */

@@ -254,7 +254,7 @@ function penalize(st: HostState): void {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-export type FetchOptions = {
+type FetchOptions = {
   transport?: Transport
   headers?: Record<string, string>
   /**
@@ -263,7 +263,6 @@ export type FetchOptions = {
    */
   minIntervalMs?: number
   timeoutMs?: number
-  retries?: number
   /**
    * 403 als vorübergehende Bot-Abwehr behandeln und wiederholen (Standard).
    *
@@ -304,6 +303,7 @@ class HttpError extends Error {
 const BLOCKED_BACKOFF_MS = 1_200
 const SERVER_BACKOFF_MS = 400
 const BLOCKED_BACKOFF_CAP_MS = 3_000
+const RETRIES = 2
 const BLOCKED_RETRIES = 4
 
 /**
@@ -328,7 +328,6 @@ async function fetchLive(url: string, opts: FetchOptions): Promise<string> {
     transport = 'plain',
     minIntervalMs = 0,
     timeoutMs = 12_000,
-    retries = 2,
     retryOn403 = true,
   } = opts
   const host = new URL(url).host
@@ -343,7 +342,7 @@ async function fetchLive(url: string, opts: FetchOptions): Promise<string> {
 
   let lastError: unknown
   let backoffMs = SERVER_BACKOFF_MS
-  let budget = retries
+  let budget = RETRIES
   for (let attempt = 0; attempt <= budget; attempt++) {
     if (attempt > 0) st.stats.retries++
 
