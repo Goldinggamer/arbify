@@ -93,7 +93,9 @@ async function waitForBackend(): Promise<boolean> {
   return false
 }
 
-const scan = start('node', ['server/index.ts'], { PORT: String(API_PORT) })
+// process.execPath statt 'node': dieselbe Node-Version wie der Starter, auch
+// wenn im PATH eine andere liegt.
+const scan = start(process.execPath, ['server/index.ts'], { PORT: String(API_PORT) })
 prefix(scan, '[scan]')
 
 const ready = await waitForBackend()
@@ -104,5 +106,8 @@ if (!ready) {
   )
 }
 
-const web = start('node_modules/.bin/vite', [], { API_PORT: String(API_PORT) })
+// Vite direkt über Node starten, nicht über node_modules/.bin/vite: das ist
+// ein Shellskript, das unter Windows nicht ausführbar ist (ENOENT) — dort
+// gäbe es nur vite.cmd, und das bräuchte eine Shell.
+const web = start(process.execPath, ['node_modules/vite/bin/vite.js'], { API_PORT: String(API_PORT) })
 prefix(web, '[web] ')

@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "arbify",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev.ts"],
       "port": 5173
     }
   ]
