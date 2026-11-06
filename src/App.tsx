@@ -22,7 +22,7 @@ import { Header } from './components/Header'
 import { OpportunityCard } from './components/OpportunityCard'
 import { DetailPanel } from './components/DetailPanel'
 import { FilterOverlay } from './components/FilterOverlay'
-import { IconSort } from './components/icons'
+import { IconSearch, IconSort } from './components/icons'
 
 /** Wie oft der Stand vom Backend geholt wird — liest nur den Speicher des Servers, kostet die Buchmacher nichts. */
 const POLL_MS = 2_000
@@ -139,7 +139,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(() => loadStored('settings', DEFAULT_SETTINGS))
   const [sort, setSort] = useState<SortKey>('percentage-desc')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [overlay, setOverlay] = useState<{ open: boolean; section?: 'sportsbook' | 'settings' }>({ open: false })
+  const [overlay, setOverlay] = useState<{ open: boolean; section?: 'sportsbook' | 'settings' | 'sorting' }>({ open: false })
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
   const [status, setStatus] = useState<ScanStatus | null>(null)
@@ -305,48 +305,50 @@ export default function App() {
       />
 
       <div className="flex min-h-0 flex-1">
-        <main className="flex min-w-0 flex-1 flex-col">
-          {/* Statusleiste */}
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line-soft px-4 py-2.5 text-[12px]">
-            <span className="font-semibold">
-              <span className="text-accent">{results.length}</span>{' '}
-              {results.length === 1 ? 'Wettmöglichkeit' : 'Wettmöglichkeiten'}
-            </span>
-            <span className="text-muted">
-              Beste Rendite <b className="text-dim">{pct(totals.best)}</b>
-            </span>
-            <span className="text-muted">
-              Bankroll <b className="text-dim">{money(settings.bankroll)}</b> · Gewinn je Wette Ø{' '}
-              <b className="text-dim">{money(results.length ? totals.sum / results.length : 0)}</b>
-            </span>
-            <DataSourceBadge status={status} />
-            <span className="ml-auto flex items-center gap-2 text-muted">
-              Zeitfenster: <b className="text-dim">nächste {windowLabel(windowHours)}</b>
-              <button
-                onClick={() => setOverlay({ open: true, section: 'settings' })}
-                className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 font-semibold text-dim transition hover:text-white"
-              >
-                <IconSort className="h-3.5 w-3.5" />
-                {sortLabel(sort)}
-              </button>
-            </span>
-          </div>
+        {/* Titel und Liste scrollen gemeinsam — der große Titel weicht wie in iOS nach oben aus. */}
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+          <div className="mx-auto max-w-[1400px] px-4 pb-10 pt-6 sm:px-6 sm:pt-8">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h1 className="text-[28px] font-bold leading-tight tracking-[-0.025em] sm:text-[32px]">
+                  Wettmöglichkeiten
+                </h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-muted">
+                  <span>Vorspiel · nächste {windowLabel(windowHours)}</span>
+                  <DataSourceBadge status={status} />
+                </div>
+              </div>
+              <SortControl sort={sort} onChange={setSort} onMore={() => setOverlay({ open: true, section: 'sorting' })} />
+            </div>
+
+            {/* Kennzahlen */}
+            <div className="mt-6 grid grid-cols-3 gap-3">
+              <Metric label={results.length === 1 ? 'Wettmöglichkeit' : 'Wettmöglichkeiten'} value={String(results.length)} />
+              <Metric label="Beste Rendite" value={pct(totals.best)} accent />
+              <Metric
+                label="Ø Gewinn je Wette"
+                value={money(results.length ? totals.sum / results.length : 0)}
+                title={`Bei ${money(settings.bankroll)} Bankroll`}
+              />
+            </div>
 
           {/* Liste */}
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+          <div className="mt-6 space-y-3">
             {results.length === 0 ? (
               <EmptyState status={status} sports={filters.sports} onReset={() => setFilters(DEFAULT_FILTERS)} />
             ) : (
-              results.map((opp) => (
+              results.map((opp, i) => (
                 <OpportunityCard
                   key={opp.id}
                   opp={opp}
+                  index={i}
                   settings={settings}
                   selected={selected?.id === opp.id}
                   onSelect={() => setSelectedId(opp.id)}
                 />
               ))
             )}
+          </div>
           </div>
         </main>
 
@@ -402,43 +404,46 @@ function EmptyState({
   const margins = (status?.margins ?? []).filter((m) => sports.includes(m.sport))
 
   return (
-    <div className="mx-auto mt-12 max-w-2xl">
+    <div className="mx-auto mt-14 max-w-2xl animate-fade-in px-1">
       <div className="text-center">
-        <p className="text-[15px] font-semibold">Aktuell keine Arbitrage</p>
-        <p className="mx-auto mt-1 max-w-sm text-[13px] leading-relaxed text-muted">
+        <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-white text-accent shadow-card">
+          <IconSearch className="h-6 w-6" />
+        </div>
+        <p className="text-[19px] font-semibold tracking-[-0.02em]">Aktuell keine Arbitrage</p>
+        <p className="mx-auto mt-1.5 max-w-sm text-[14px] leading-relaxed text-muted">
           {status?.online
             ? 'Der Scanner läuft. Mit mehr angebundenen Buchmachern steigt die Trefferquote deutlich.'
             : 'Lockere die Filter — z.B. mehr Buchmacher auswählen oder die minimale Arbitrage senken.'}
         </p>
         <button
           onClick={onReset}
-          className="mt-4 rounded-xl bg-surface-2 px-4 py-2 text-[13px] font-semibold hover:bg-surface-3"
+          className="mt-5 h-9 rounded-full bg-accent px-5 text-[13px] font-medium text-white hover:bg-accent-strong"
         >
           Filter zurücksetzen
         </button>
       </div>
 
       {margins.length > 0 && (
-        <div className="mt-8">
-          <h3 className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-muted">
+        <div className="mt-10">
+          <h3 className="mb-1 text-[17px] font-semibold tracking-[-0.02em]">
             Knappste Vergleiche
           </h3>
-          <p className="mb-3 text-[11.5px] text-muted">
+          <p className="mb-4 text-[13px] text-muted">
             Summe der impliziten Wahrscheinlichkeiten über die jeweils besten Quoten.
             Unter&nbsp;100&nbsp;% wäre eine Arbitrage.
           </p>
-          <div className="space-y-1.5">
+          <div className="divide-y divide-line-soft overflow-hidden rounded-[18px] bg-white shadow-card">
             {margins.slice(0, 8).map((m, i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 rounded-xl border border-line-soft bg-surface px-3 py-2"
+                className="flex items-center gap-3 px-4 py-3"
               >
-                <span className="w-[74px] shrink-0 whitespace-nowrap text-[14px] font-bold tabular-nums text-dim">
+                <span className="figure w-[74px] shrink-0 whitespace-nowrap text-[14px] font-semibold text-dim">
                   {m.impliedPercent.toFixed(2)} %
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold">{m.event}</p>
-                  <p className="truncate text-[11px] text-muted">
+                  <p className="truncate text-[14px] font-medium">{m.event}</p>
+                  <p className="truncate text-[12px] text-muted">
                     {m.market} · {m.league}
                   </p>
                 </div>
@@ -446,11 +451,11 @@ function EmptyState({
                   {m.legs.map((l, j) => (
                     <span
                       key={j}
-                      className="flex items-center gap-1 rounded-lg bg-surface-2 px-1.5 py-1 text-[11px]"
+                      className="flex items-center gap-1.5 rounded-lg bg-surface-2 px-1.5 py-1 text-[12px]"
                       title={l.label}
                     >
                       <BookLogo id={l.bookmakerId} size="sm" className="!h-4 !w-4 !text-[6px]" />
-                      <span className="font-semibold tabular-nums">{l.odds.toFixed(2)}</span>
+                      <span className="tabular font-semibold">{l.odds.toFixed(2)}</span>
                     </span>
                   ))}
                 </div>
@@ -473,7 +478,7 @@ function DataSourceBadge({ status }: { status: ScanStatus | null }) {
     return (
       <span
         title="Backend nicht erreichbar — die Liste zeigt generierte Demo-Daten. Starte den Scanner mit: npm run scan"
-        className="flex items-center gap-1.5 rounded-lg bg-warn/12 px-2 py-1 font-semibold text-warn"
+        className="flex h-6 items-center gap-1.5 rounded-full bg-warn/10 px-2.5 text-[12px] font-medium text-warn"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-warn" />
         Demo-Daten
@@ -500,32 +505,76 @@ function DataSourceBadge({ status }: { status: ScanStatus | null }) {
         (status.droppedSources ? ` ${status.droppedSources} unklare Quellen verworfen.` : '') +
         (failed.length ? ` Fehler: ${failed.map((f) => f.bookmakerId).join(', ')}` : '')
       }
-      className={`flex items-center gap-1.5 rounded-lg px-2 py-1 font-semibold ${
-        stale ? 'bg-warn/12 text-warn' : 'bg-accent/12 text-accent'
+      className={`flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium ${
+        stale ? 'bg-warn/10 text-warn' : 'bg-accent/10 text-accent'
       }`}
     >
       <span className={`live-dot h-1.5 w-1.5 rounded-full ${stale ? 'bg-warn' : 'bg-accent'}`} />
       Live-Quoten
-      {ageSec !== null && <span className="tabular-nums">· {ageSec} s alt</span>}
-      <span className="font-normal text-muted">
-        · {status.books.length - failed.length}/{status.books.length} Buchmacher · {status.hotCount} beobachtet
+      {ageSec !== null && <span className="tabular">· {ageSec} s alt</span>}
+      <span className="hidden font-normal text-muted sm:inline">
+        · <span className="tabular">{status.books.length - failed.length}/{status.books.length}</span> Buchmacher ·{' '}
+        <span className="tabular">{status.hotCount}</span> beobachtet
       </span>
       {failed.length > 0 && <span className="text-warn">· {failed.length} Fehler</span>}
     </span>
   )
 }
 
-function sortLabel(s: SortKey) {
-  switch (s) {
-    case 'percentage-asc':
-      return 'Arb % ↑'
-    case 'profit-desc':
-      return 'Gewinn €'
-    case 'time-asc':
-      return 'Anstoß ↑'
-    case 'time-desc':
-      return 'Anstoß ↓'
-    default:
-      return 'Arb % ↓'
-  }
+/** Kennzahl-Kachel unter dem Titel: Beschriftung oben, Wert groß darunter. */
+function Metric({ label, value, accent, title }: { label: string; value: string; accent?: boolean; title?: string }) {
+  return (
+    <div className="min-w-0 rounded-[18px] bg-white px-4 py-3.5 shadow-card" title={title}>
+      <p className="truncate text-[12px] font-medium text-muted">{label}</p>
+      <p className={`figure mt-1 truncate text-[20px] font-semibold sm:text-[24px] ${accent ? 'text-accent' : 'text-fg'}`}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+const SORT_SEGMENTS: { id: SortKey; label: string }[] = [
+  { id: 'percentage-desc', label: 'Rendite' },
+  { id: 'profit-desc', label: 'Gewinn' },
+  { id: 'time-asc', label: 'Anstoß' },
+]
+
+/**
+ * Segmentierte Sortierung wie in macOS. Der weiße Schieber gleitet unter das
+ * gewählte Segment; ist eine seltenere Sortierung aus dem Einstellungsfenster
+ * aktiv, steht er nirgends.
+ */
+function SortControl({ sort, onChange, onMore }: { sort: SortKey; onChange: (s: SortKey) => void; onMore: () => void }) {
+  const active = SORT_SEGMENTS.findIndex((s) => s.id === sort)
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative grid grid-cols-3 rounded-[10px] bg-black/[0.06] p-0.5">
+        <span
+          aria-hidden
+          className={`absolute bottom-0.5 left-0.5 top-0.5 w-[calc((100%-4px)/3)] rounded-lg bg-white shadow-[0_0_0_0.5px_oklch(0_0_0/0.06),0_2px_6px_oklch(0_0_0/0.1)] transition-[translate,opacity] duration-300 ${
+            active < 0 ? 'opacity-0' : 'opacity-100'
+          }`}
+          style={{ translate: `${Math.max(active, 0) * 100}% 0` }}
+        />
+        {SORT_SEGMENTS.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => onChange(s.id)}
+            aria-pressed={sort === s.id}
+            className={`relative h-7 px-4 text-[13px] font-medium ${sort === s.id ? 'text-fg' : 'text-muted hover:text-dim'}`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={onMore}
+        title="Weitere Sortierungen"
+        aria-label="Weitere Sortierungen"
+        className="grid h-8 w-8 place-items-center rounded-full text-muted hover:bg-black/[0.05] hover:text-fg"
+      >
+        <IconSort className="h-4 w-4" />
+      </button>
+    </div>
+  )
 }

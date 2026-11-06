@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { BetWarningId, Filters, PushConfig, Settings, SortKey } from '../types'
 import { BOOKMAKERS } from '../data/bookmakers'
 import { ALL_SPORT_IDS, MARKET_FAMILIES, SPORTS, familiesForSports } from '../data/markets'
@@ -84,38 +84,75 @@ export function FilterOverlay({
   windowHours: number
 }) {
   const [section, setSection] = useState<Section>(initialSection ?? 'sportsbook')
+  const [closing, setClosing] = useState(false)
+
+  /** Schließen mit kurzem Ausblenden — kürzer als das Einblenden. */
+  const close = () => {
+    if (closing) return
+    setClosing(true)
+    window.setTimeout(() => {
+      setClosing(false)
+      onClose()
+    }, 140)
+  }
+
+  // Escape schließt sofort, ohne Animation: Tastaturaktionen sollen sich
+  // unmittelbar anfühlen.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-black/70 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className={`fixed inset-0 z-50 flex bg-black/25 backdrop-blur-[3px] ${closing ? 'animate-fade-out' : 'animate-fade-in'}`}
+      onClick={close}
+    >
       <div
-        className="animate-in-up m-auto flex h-[86vh] w-[min(1100px,94vw)] overflow-hidden rounded-2xl border border-line bg-bg shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filter und Einstellungen"
+        className={`m-auto flex h-[min(88dvh,820px)] w-[min(1080px,calc(100vw_-_24px))] flex-col overflow-hidden rounded-[22px] bg-white shadow-pop md:flex-row ${
+          closing ? 'animate-modal-out' : 'animate-modal-in'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Linke Leiste */}
-        <div className="flex w-64 shrink-0 flex-col border-r border-line bg-surface p-3">
-          <div className="flex items-center justify-between px-2 pb-3">
-            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted">Anpassen</span>
-            <button onClick={onReset} className="text-[11px] font-semibold text-muted hover:text-danger">
+        <div className="flex shrink-0 flex-col border-b border-line-soft bg-surface-2 p-2 md:w-60 md:border-b-0 md:border-r md:p-3">
+          <div className="hidden items-center justify-between px-2 pb-3 md:flex">
+            <span className="text-[13px] font-semibold text-fg">Anpassen</span>
+            <button onClick={onReset} className="rounded px-1 text-[12px] font-medium text-accent hover:text-danger">
               Zurücksetzen
             </button>
           </div>
-          <nav className="flex flex-col gap-1">
+          <nav className="flex gap-0.5 overflow-x-auto md:flex-col md:overflow-visible">
             {SECTIONS.map((s) => (
               <button
                 key={s.id}
                 onClick={() => setSection(s.id)}
-                className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-                  section === s.id ? 'bg-surface-3 text-white' : 'text-dim hover:bg-surface-2'
+                aria-current={section === s.id ? 'page' : undefined}
+                className={`flex shrink-0 items-center justify-between gap-3 rounded-[8px] px-3 py-[7px] text-left text-[13px] font-medium ${
+                  section === s.id ? 'bg-accent text-white' : 'text-fg hover:bg-black/[0.05]'
                 }`}
               >
                 {s.label}
-                <span className="text-[11px] font-medium text-muted">{summaryFor(s.id, filters, settings, sort, push)}</span>
+                <span
+                  className={`tabular hidden max-w-[90px] truncate text-[12px] font-normal md:inline ${
+                    section === s.id ? 'text-white/75' : 'text-muted'
+                  }`}
+                >
+                  {summaryFor(s.id, filters, settings, sort, push)}
+                </span>
               </button>
             ))}
           </nav>
-          <p className="mt-auto px-3 text-[11px] leading-relaxed text-muted">
+          <p className="mt-auto hidden px-3 text-[12px] leading-relaxed text-muted md:block">
             Zeitraum ist fest auf die <b className="text-dim">nächsten {windowLabel(windowHours)}</b>{' '}
             gesetzt. Partien weiter in der Zukunft werden nicht gescannt: dort sind auffällige
             Quoten meist Fehler, die der Anbieter noch storniert.
@@ -124,14 +161,18 @@ export function FilterOverlay({
 
         {/* Inhalt */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-between border-b border-line px-5 py-3">
-            <h2 className="text-[15px] font-bold">{SECTIONS.find((s) => s.id === section)?.label}</h2>
-            <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-white">
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-line-soft px-5">
+            <h2 className="text-[17px] font-semibold tracking-[-0.02em]">{SECTIONS.find((s) => s.id === section)?.label}</h2>
+            <button
+              onClick={close}
+              aria-label="Schließen"
+              className="grid h-7 w-7 place-items-center rounded-full bg-black/[0.05] text-muted hover:bg-black/[0.09] hover:text-fg"
+            >
               <IconX />
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <div key={section} className="min-h-0 flex-1 animate-fade-in overflow-y-auto p-5 [animation-duration:120ms]">
             {section === 'sportsbook' && <SportsbookSection filters={filters} onChange={onChangeFilters} />}
             {section === 'sport' && <SportSection filters={filters} onChange={onChangeFilters} />}
             {section === 'odds' && <OddsSection filters={filters} onChange={onChangeFilters} />}
@@ -147,16 +188,22 @@ export function FilterOverlay({
             {section === 'sorting' && <SortingSection sort={sort} onChange={onChangeSort} />}
           </div>
 
-          <div className="flex items-center gap-3 border-t border-line px-5 py-3">
+          <div className="flex shrink-0 items-center gap-3 border-t border-line-soft px-5 py-3">
             <button
-              onClick={onClose}
-              className="rounded-xl border border-line px-4 py-2.5 text-[13px] font-semibold text-dim hover:text-white"
+              onClick={onReset}
+              className="h-9 rounded-full px-3 text-[13px] font-medium text-accent hover:text-danger md:hidden"
+            >
+              Zurücksetzen
+            </button>
+            <button
+              onClick={close}
+              className="hidden h-9 rounded-full bg-black/[0.05] px-5 text-[13px] font-medium text-fg hover:bg-black/[0.08] md:block"
             >
               Abbrechen
             </button>
             <button
-              onClick={onClose}
-              className="ml-auto rounded-xl bg-accent px-6 py-2.5 text-[13px] font-bold text-ink transition hover:brightness-110"
+              onClick={close}
+              className="tabular ml-auto h-9 rounded-full bg-accent px-5 text-[13px] font-semibold text-white shadow-[inset_0_1px_0_oklch(1_0_0/0.3)] hover:bg-accent-strong"
             >
               {resultCount} {resultCount === 1 ? 'Ergebnis' : 'Ergebnisse'} anzeigen
             </button>
@@ -224,10 +271,10 @@ function SportsbookSection({ filters, onChange }: { filters: Filters; onChange: 
         <span className="font-semibold text-dim">
           {filters.bookmakers.length}/{BOOKMAKERS.length} ausgewählt
         </span>
-        <button onClick={() => onChange({ bookmakers: BOOKMAKERS.map((b) => b.id) })} className="text-muted hover:text-accent">
+        <button onClick={() => onChange({ bookmakers: BOOKMAKERS.map((b) => b.id) })} className="font-medium text-muted hover:text-accent">
           Alle auswählen
         </button>
-        <button onClick={() => onChange({ bookmakers: [] })} className="text-muted hover:text-danger">
+        <button onClick={() => onChange({ bookmakers: [] })} className="font-medium text-muted hover:text-danger">
           Leeren
         </button>
       </div>
@@ -253,27 +300,25 @@ function SportsbookSection({ filters, onChange }: { filters: Filters; onChange: 
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buchmacher suchen…"
-          className="h-10 w-full rounded-xl border border-line bg-surface pl-9 pr-3 text-[13px] outline-none placeholder:text-muted focus:border-accent/50"
+          className="h-10 w-full rounded-xl border border-line bg-surface pl-9 pr-3 text-[13px] outline-none transition-[border-color,box-shadow] placeholder:text-muted hover:border-black/15 focus:border-accent/40 focus:shadow-[0_0_0_3px_oklch(0.48_0.2_264/0.16)]"
         />
       </div>
 
-      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">
+      <p className="mb-2 text-[12px] font-medium text-muted">
         In Deutschland lizenziert (GGL-Whitelist)
       </p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         {list.map((b) => {
           const on = filters.bookmakers.includes(b.id)
           return (
             <button
               key={b.id}
               onClick={() => toggle(b.id)}
-              className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition ${
-                on ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:border-line-soft hover:bg-surface-2'
-              }`}
+              className={`flex items-center gap-3 rounded-xl border p-2.5 text-left ${ON_OFF(on)}`}
             >
               <BookLogo id={b.id} size="md" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold">{b.name}</p>
+                <p className="truncate text-[13px] font-medium">{b.name}</p>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[9px] text-muted">
                   {b.oneClick && <Tag>1-Klick</Tag>}
                   {b.bestForLive && <Tag>Live</Tag>}
@@ -314,7 +359,7 @@ function OddsSection({ filters, onChange }: { filters: Filters; onChange: (f: Pa
         max={100}
         onChange={(v) => onChange({ maxOdds: v })}
       />
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {[
           { l: 'Alle', min: 1, max: 100 },
           { l: 'Favoriten (1.0–2.5)', min: 1, max: 2.5 },
@@ -347,7 +392,7 @@ function PercentageSection({ filters, onChange }: { filters: Filters; onChange: 
       <div>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[13px] font-semibold">Minimum</span>
-          <span className="text-[13px] font-bold text-accent">{filters.minPercentage.toFixed(1)} %</span>
+          <span className="figure text-[13px] font-semibold text-accent">{filters.minPercentage.toFixed(1)} %</span>
         </div>
         <input
           type="range"
@@ -356,13 +401,14 @@ function PercentageSection({ filters, onChange }: { filters: Filters; onChange: 
           step={0.1}
           value={filters.minPercentage}
           onChange={(e) => onChange({ minPercentage: Math.min(Number(e.target.value), filters.maxPercentage) })}
+          style={{ '--fill': `${(filters.minPercentage / 10) * 100}%` } as CSSProperties}
           className="w-full"
         />
       </div>
       <div>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[13px] font-semibold">Maximum</span>
-          <span className="text-[13px] font-bold text-accent">{filters.maxPercentage.toFixed(1)} %</span>
+          <span className="figure text-[13px] font-semibold text-accent">{filters.maxPercentage.toFixed(1)} %</span>
         </div>
         <input
           type="range"
@@ -371,6 +417,7 @@ function PercentageSection({ filters, onChange }: { filters: Filters; onChange: 
           step={0.5}
           value={filters.maxPercentage}
           onChange={(e) => onChange({ maxPercentage: Math.max(Number(e.target.value), filters.minPercentage) })}
+          style={{ '--fill': `${(filters.maxPercentage / 30) * 100}%` } as CSSProperties}
           className="w-full"
         />
       </div>
@@ -408,11 +455,11 @@ function SportSection({ filters, onChange }: { filters: Filters; onChange: (f: P
         <span className="font-semibold text-dim">
           {filters.sports.length}/{SPORTS.length} ausgewählt
         </span>
-        <button onClick={() => onChange({ sports: [...ALL_SPORT_IDS] })} className="text-muted hover:text-accent">
+        <button onClick={() => onChange({ sports: [...ALL_SPORT_IDS] })} className="font-medium text-muted hover:text-accent">
           Alle auswählen
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         {SPORTS.map((s) => {
           return (
             <CheckTile key={s.id} on={filters.sports.includes(s.id)} onClick={() => toggle(s.id)}>
@@ -446,18 +493,18 @@ function MarketSection({ filters, onChange }: { filters: Filters; onChange: (f: 
         </span>
         <button
           onClick={() => onChange({ markets: [...new Set([...filters.markets, ...visibleIds])] })}
-          className="text-muted hover:text-accent"
+          className="font-medium text-muted hover:text-accent"
         >
           Alle auswählen
         </button>
         <button
           onClick={() => onChange({ markets: filters.markets.filter((id) => !visibleIds.includes(id)) })}
-          className="text-muted hover:text-danger"
+          className="font-medium text-muted hover:text-danger"
         >
           Leeren
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         {visible.map((m) => {
           return (
             <CheckTile key={m.id} on={filters.markets.includes(m.id)} onClick={() => toggle(m.id)}>
@@ -495,7 +542,7 @@ function AlertBlock({
 
   return (
     <div>
-      <p className="mb-2 text-[13px] font-semibold">Melden ab Rendite</p>
+      <p className="mb-2 text-[13px] font-medium">Melden ab Rendite</p>
       <div className="flex flex-wrap gap-2">
         {[0, 1, 2, 3, 5, 10].map((v) => (
           <Chip
@@ -507,7 +554,7 @@ function AlertBlock({
           </Chip>
         ))}
       </div>
-      <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
+      <p className="mt-2 text-[12px] leading-relaxed text-muted">
         Gemeldet wird nur, was auch in der Liste stünde — die Buchmacher-, Markt- und
         Sportauswahl gilt also mit. Jeder Fund meldet sich einmal; fällt er unter die Schwelle
         und steigt wieder darüber, meldet er sich erneut.
@@ -532,7 +579,7 @@ function AlertBlock({
               Klick darauf holt das Fenster nach vorn.
           </ToggleRow>
 
-          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface p-3">
+          <div className="flex items-center gap-2 rounded-xl border border-line-soft bg-surface p-3">
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-semibold">
                 {perm === 'granted'
@@ -543,7 +590,7 @@ function AlertBlock({
                       ? 'Systemmeldungen nicht verfügbar'
                       : 'Erlaubnis noch nicht erteilt'}
               </p>
-              <p className="text-[11.5px] leading-relaxed text-muted">
+              <p className="text-[12px] leading-relaxed text-muted">
                 {perm === 'denied'
                   ? 'In den Browser-Einstellungen für diese Seite wieder freigeben — nachfragen darf die Seite nicht mehr.'
                   : perm === 'granted'
@@ -554,7 +601,7 @@ function AlertBlock({
             {perm === 'default' && (
               <button
                 onClick={() => void enable()}
-                className="shrink-0 rounded-lg bg-accent px-3 py-2 text-[12px] font-bold text-ink hover:brightness-110"
+                className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] font-semibold text-white hover:bg-accent-strong"
               >
                 Erlauben
               </button>
@@ -565,7 +612,7 @@ function AlertBlock({
                   unlockAudio()
                   playChime()
                 }}
-                className="shrink-0 rounded-lg border border-line px-3 py-2 text-[12px] font-semibold text-dim hover:text-white"
+                className="h-8 shrink-0 rounded-md border border-line px-3 text-[12px] font-medium text-dim hover:border-black/15 hover:text-fg"
               >
                 Testen
               </button>
@@ -627,7 +674,7 @@ function PushBlock({
           </ToggleRow>
 
           {settings.alertQuiet && (
-            <div className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3">
+            <div className="flex items-center gap-3 rounded-xl border border-line-soft bg-surface p-3">
               <p className="text-[12px] text-muted">von</p>
               <HourPicker value={settings.quietFrom} onChange={(v) => onChange({ quietFrom: v })} />
               <p className="text-[12px] text-muted">bis</p>
@@ -635,7 +682,7 @@ function PushBlock({
             </div>
           )}
 
-          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface p-3">
+          <div className="flex items-center gap-2 rounded-xl border border-line-soft bg-surface p-3">
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-semibold">
                 {probe.state === 'ok'
@@ -644,7 +691,7 @@ function PushBlock({
                     ? 'Versand fehlgeschlagen'
                     : 'Ankunft prüfen'}
               </p>
-              <p className="text-[11.5px] leading-relaxed text-muted">
+              <p className="text-[12px] leading-relaxed text-muted">
                 {probe.state === 'fehler'
                   ? probe.msg
                   : probe.state === 'ok'
@@ -655,7 +702,7 @@ function PushBlock({
             <button
               onClick={() => void test()}
               disabled={probe.state === 'laeuft'}
-              className="shrink-0 rounded-lg border border-line px-3 py-2 text-[12px] font-semibold text-dim hover:text-white disabled:opacity-50"
+              className="h-8 shrink-0 rounded-md border border-line px-3 text-[12px] font-medium text-dim hover:border-black/15 hover:text-fg disabled:opacity-50"
             >
               {probe.state === 'laeuft' ? '…' : 'Senden'}
             </button>
@@ -691,32 +738,29 @@ function PhoneSection({
   const [zeigen, setZeigen] = useState(false)
   const [probe, test] = usePushProbe()
 
-  const feld = 'w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px] outline-none focus:border-accent/60'
+  const feld =
+    'h-9 w-full rounded-xl border border-line bg-surface-2 px-3 text-[13px] outline-none transition-[border-color,box-shadow] placeholder:text-muted hover:border-black/15 focus:border-accent/40 focus:shadow-[0_0_0_3px_oklch(0.48_0.2_264/0.16)]'
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="mb-2 text-[13px] font-semibold">Meldedienst</p>
-        <div className="grid grid-cols-2 gap-2">
+        <p className="mb-2 text-[13px] font-medium">Meldedienst</p>
+        <div className="grid gap-2 sm:grid-cols-2">
           {SERVICES.map((s) => (
             <button
               key={s.id}
               onClick={() => onChange({ service: s.id })}
-              className={`rounded-xl border p-3 text-left transition ${
-                config.service === s.id
-                  ? 'border-accent/50 bg-accent/8'
-                  : 'border-line bg-surface hover:bg-surface-2'
-              }`}
+              className={`rounded-xl border p-3 text-left ${ON_OFF(config.service === s.id)}`}
             >
               <p className="text-[13px] font-semibold">{s.label}</p>
-              <p className="text-[11.5px] leading-relaxed text-muted">{s.hint}</p>
+              <p className="text-[12px] leading-relaxed text-muted">{s.hint}</p>
             </button>
           ))}
         </div>
       </div>
 
       {config.service === 'ntfy' && (
-        <div className="space-y-3 rounded-xl border border-line bg-surface p-3">
+        <div className="space-y-3 rounded-xl border border-line-soft bg-surface p-3">
           <div>
             <label className="mb-1 block text-[12px] font-semibold">Thema</label>
             <div className="flex gap-2">
@@ -731,12 +775,12 @@ function PhoneSection({
               />
               <button
                 onClick={() => setZeigen((v) => !v)}
-                className="shrink-0 rounded-lg border border-line px-3 text-[12px] font-semibold text-dim hover:text-white"
+                className="shrink-0 rounded-xl border border-line px-3 text-[12px] font-medium text-dim hover:border-black/15 hover:text-fg"
               >
                 {zeigen ? 'Verbergen' : 'Zeigen'}
               </button>
             </div>
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
+            <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
               Genau das, was in der ntfy-App unter „Subscribe to topic" steht. Es ist der{' '}
               <b className="text-dim">einzige Schutz</b> des Kanals — wer es kennt, liest jeden Fund
               mit und kann dir selbst Meldungen schicken. Deshalb gehört es weder in die
@@ -767,7 +811,7 @@ function PhoneSection({
       )}
 
       {config.service === 'pushover' && (
-        <div className="space-y-3 rounded-xl border border-line bg-surface p-3">
+        <div className="space-y-3 rounded-xl border border-line-soft bg-surface p-3">
           <div>
             <label className="mb-1 block text-[12px] font-semibold">User Key</label>
             <input
@@ -787,7 +831,7 @@ function PhoneSection({
               autoComplete="off"
               className={feld}
             />
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
+            <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
               Beides steht im Pushover-Konto: der User Key auf der Startseite, das Token bei der
               selbst angelegten Anwendung.
             </p>
@@ -796,7 +840,7 @@ function PhoneSection({
       )}
 
       {config.service === 'webhook' && (
-        <div className="rounded-xl border border-line bg-surface p-3">
+        <div className="rounded-xl border border-line-soft bg-surface p-3">
           <label className="mb-1 block text-[12px] font-semibold">Adresse</label>
           <input
             value={config.webhookUrl}
@@ -804,14 +848,14 @@ function PhoneSection({
             placeholder="https://…"
             className={feld}
           />
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
+          <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
             Bekommt je Fund ein JSON mit Titel, Text, Dringlichkeit und den Links zu beiden
             Buchmachern.
           </p>
         </div>
       )}
 
-      <div className="flex items-center gap-2 rounded-xl border border-line bg-surface p-3">
+      <div className="flex items-center gap-2 rounded-xl border border-line-soft bg-surface p-3">
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold">
             {probe.state === 'ok'
@@ -822,7 +866,7 @@ function PhoneSection({
                   ? 'Eingerichtet'
                   : 'Noch nicht eingerichtet'}
           </p>
-          <p className="text-[11.5px] leading-relaxed text-muted">
+          <p className="text-[12px] leading-relaxed text-muted">
             {probe.state === 'fehler'
               ? probe.msg
               : probe.state === 'ok'
@@ -835,13 +879,13 @@ function PhoneSection({
         <button
           onClick={() => void test()}
           disabled={!push?.ready || probe.state === 'laeuft'}
-          className="shrink-0 rounded-lg border border-line px-3 py-2 text-[12px] font-semibold text-dim hover:text-white disabled:opacity-40"
+          className="h-8 shrink-0 rounded-md border border-line px-3 text-[12px] font-medium text-dim hover:border-black/15 hover:text-fg disabled:opacity-40"
         >
           {probe.state === 'laeuft' ? '…' : 'Testen'}
         </button>
       </div>
 
-      <p className="text-[11.5px] leading-relaxed text-muted">
+      <p className="text-[12px] leading-relaxed text-muted">
         Was gemeldet wird — Schwelle, Nachtruhe, Ton — steht unter{' '}
         <b className="text-dim">Einstellungen</b>. Gemeldet wird immer nur, was mit dem
         eingestellten Filter auch in der Liste stünde.
@@ -855,7 +899,7 @@ function HourPicker({ value, onChange }: { value: number; onChange: (v: number) 
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-[12px] font-semibold"
+      className="tabular h-8 rounded-md border border-line bg-surface-2 px-2 text-[12px] font-medium outline-none hover:border-black/15 focus:border-accent/40"
     >
       {Array.from({ length: 24 }, (_, h) => (
         <option key={h} value={h}>
@@ -918,7 +962,7 @@ function SettingsSection({
       />
 
       <div>
-        <p className="mb-2 text-[13px] font-semibold">Einsätze runden auf</p>
+        <p className="mb-2 text-[13px] font-medium">Einsätze runden auf</p>
         <div className="flex flex-wrap gap-2">
           {[0, 0.5, 1, 5, 10].map((r) => (
             <Chip key={r} active={settings.roundTo === r} onClick={() => onChange({ roundTo: r })}>
@@ -926,7 +970,7 @@ function SettingsSection({
             </Chip>
           ))}
         </div>
-        <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
+        <p className="mt-2 text-[12px] leading-relaxed text-muted">
           Gerundete Einsätze sehen für Buchmacher unauffälliger aus, kosten aber ein paar Zehntel
           Prozent Rendite.
         </p>
@@ -934,9 +978,9 @@ function SettingsSection({
 
       <AlertBlock settings={settings} onChange={onChange} push={push} />
 
-      <div className="rounded-xl border border-line bg-surface p-3">
+      <div className="rounded-xl border border-line-soft bg-surface p-3">
         <p className="text-[13px] font-semibold">Wettsteuer</p>
-        <p className="text-[11.5px] leading-relaxed text-muted">
+        <p className="text-[12px] leading-relaxed text-muted">
           Die Renditen sind reine Quotenwerte, ohne Steuerabzug. Anbieter wie Betano oder bwin geben
           die 5,3 % an den Kunden weiter, Winamax, Tipico und Interwetten nicht. Betroffene Wetten
           tragen den Hinweis „Wettsteuer"; welcher Anbieter wie abrechnet, steht im Detailbereich
@@ -956,9 +1000,7 @@ function SortingSection({ sort, onChange }: { sort: SortKey; onChange: (s: SortK
         <button
           key={s.id}
           onClick={() => onChange(s.id)}
-          className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-            sort === s.id ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
-          }`}
+          className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${ON_OFF(sort === s.id)}`}
         >
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-semibold">{s.label}</p>
@@ -985,14 +1027,22 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition ${
-        active ? 'border-accent bg-accent/12 text-accent' : 'border-line text-dim hover:bg-surface-2'
+      className={`flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium ${
+        active
+          ? 'border-accent bg-accent text-white'
+          : 'border-line bg-white text-fg hover:border-black/15 hover:bg-black/[0.03]'
       }`}
     >
       {children}
     </button>
   )
 }
+
+/** Gewählt / nicht gewählt — gemeinsam für Kacheln, Zeilen und Listeneinträge. */
+const ON_OFF = (on: boolean) =>
+  on
+    ? 'border-accent/40 bg-accent/[0.035]'
+    : 'border-line bg-white hover:border-black/15 hover:bg-surface-2/60'
 
 const toggleIn = <T,>(list: T[], id: T): T[] => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
 
@@ -1012,11 +1062,13 @@ function usePushProbe(): [Probe, () => Promise<void>] {
 function CheckBox({ on, round }: { on: boolean; round?: boolean }) {
   return (
     <span
-      className={`grid h-5 w-5 shrink-0 place-items-center ${round ? 'rounded-full' : 'rounded-md'} border ${
-        on ? 'border-accent bg-accent text-ink' : 'border-line'
+      className={`grid h-[18px] w-[18px] shrink-0 place-items-center ${round ? 'rounded-full' : 'rounded-[5px]'} border transition-[background-color,border-color] ${
+        on ? 'border-accent bg-accent text-white' : 'border-black/20'
       }`}
     >
-      {on && <IconCheck className="h-3 w-3" />}
+      <IconCheck
+        className={`h-3 w-3 transition-[opacity,scale] duration-150 ${on ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`}
+      />
     </span>
   )
 }
@@ -1025,9 +1077,7 @@ function CheckTile({ on, onClick, children }: { on: boolean; onClick: () => void
   return (
     <button
       onClick={onClick}
-      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-        on ? 'border-accent/50 bg-accent/8' : 'border-line bg-surface hover:bg-surface-2'
-      }`}
+      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-[13px] font-medium ${ON_OFF(on)}`}
     >
       {children}
       <CheckBox on={on} />
@@ -1052,38 +1102,41 @@ function ToggleRow({
   tone?: 'accent' | 'danger'
 }) {
   const state = disabled
-    ? 'cursor-not-allowed border-line bg-surface opacity-60'
-    : on
-      ? tone === 'danger'
-        ? 'border-danger/50 bg-danger/8'
-        : 'border-accent/50 bg-accent/8'
-      : 'border-line bg-surface hover:bg-surface-2'
+    ? 'border-line-soft bg-surface opacity-55'
+    : on && tone === 'danger'
+      ? 'border-danger/40 bg-danger/[0.035]'
+      : ON_OFF(on)
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex w-full ${tone === 'danger' ? 'items-start' : 'items-center'} gap-3 rounded-xl border p-3 text-left transition ${state}`}
+      className={`flex w-full ${tone === 'danger' ? 'items-start' : 'items-center'} gap-3 rounded-xl border p-3 text-left ${state}`}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold">{title}</p>
-        <p className="text-[11.5px] leading-relaxed text-muted">{children}</p>
+        <p className="text-[13px] font-medium">{title}</p>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{children}</p>
       </div>
-      <Switch on={on} />
+      <Switch on={on} tone={tone} />
     </button>
   )
 }
 
 function Tag({ children }: { children: ReactNode }) {
-  return <span className="rounded bg-surface-3 px-1 py-px text-[9px] font-semibold text-dim">{children}</span>
+  return <span className="rounded-[4px] bg-black/[0.05] px-1 py-px text-[9.5px] font-medium text-dim">{children}</span>
 }
 
-function Switch({ on }: { on: boolean }) {
+function Switch({ on, tone = 'accent' }: { on: boolean; tone?: 'accent' | 'danger' }) {
   return (
     <span
-      className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition ${on ? 'bg-accent' : 'bg-surface-3'}`}
+      className={`relative mt-0.5 h-[24px] w-[40px] shrink-0 rounded-full transition-colors duration-200 ${
+        on ? (tone === 'danger' ? 'bg-danger' : 'bg-accent') : 'bg-black/[0.12]'
+      }`}
     >
+      {/* Bewegt wird nur `translate` — günstig und unterbrechbar. */}
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${on ? 'left-4.5' : 'left-0.5'}`}
+        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_0_0_0.5px_oklch(0_0_0/0.04),0_2px_4px_oklch(0_0_0/0.18)] transition-[translate] duration-250 ${
+          on ? 'translate-x-4' : 'translate-x-0'
+        }`}
       />
     </span>
   )
@@ -1110,32 +1163,34 @@ function NumberField({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-[13px] font-semibold">{label}</label>
+      <label className="mb-2 block text-[13px] font-medium">{label}</label>
       <div className="flex items-center gap-2">
         <button
           onClick={() => onChange(clamp(round(value - step, step), min, max))}
-          className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-surface text-[18px] font-bold text-dim hover:text-white"
+          aria-label={`${label} verringern`}
+          className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-surface text-[18px] font-medium text-dim hover:border-black/15 hover:text-fg"
         >
           −
         </button>
-        <div className="flex h-10 flex-1 items-center rounded-xl border border-line bg-surface px-3">
+        <div className="flex h-10 flex-1 items-center rounded-xl border border-line bg-surface px-3 transition-[border-color,box-shadow] focus-within:border-accent/40 focus-within:shadow-[0_0_0_3px_oklch(0.48_0.2_264/0.16)]">
           <input
             type="number"
             value={value}
             step={step}
             onChange={(e) => onChange(clamp(Number(e.target.value), min, max))}
-            className="w-full bg-transparent text-[14px] font-bold outline-none"
+            className="tabular w-full bg-transparent text-[14px] font-semibold outline-none"
           />
-          {suffix && <span className="text-[13px] font-bold text-muted">{suffix}</span>}
+          {suffix && <span className="text-[13px] font-medium text-muted">{suffix}</span>}
         </div>
         <button
           onClick={() => onChange(clamp(round(value + step, step), min, max))}
-          className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-surface text-[18px] font-bold text-dim hover:text-white"
+          aria-label={`${label} erhöhen`}
+          className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-surface text-[18px] font-medium text-dim hover:border-black/15 hover:text-fg"
         >
           +
         </button>
       </div>
-      {hint && <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{hint}</p>}
+      {hint && <p className="mt-2 text-[12px] leading-relaxed text-muted">{hint}</p>}
     </div>
   )
 }

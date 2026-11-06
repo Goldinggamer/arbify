@@ -20,7 +20,7 @@ export function BookLogo({
   return (
     <span
       title={b.name}
-      className={`inline-flex shrink-0 items-center justify-center rounded-md font-bold leading-none tracking-tight ${SIZES[size]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-md font-bold leading-none tracking-tight shadow-[inset_0_0_0_1px_oklch(0_0_0/0.08)] ${SIZES[size]} ${className}`}
       style={{ background: b.color, color: b.fg ?? '#fff' }}
     >
       {b.short}

@@ -1,55 +1,194 @@
+@import '@fontsource-variable/inter/opsz.css';
 @import 'tailwindcss';
 
+/*
+ * Helles Thema nach Apple-Vorbild: weiße Flächen auf hellgrauem Grund,
+ * Königsblau als einzige Farbe mit Bedeutung (Rendite, Auswahl, Aktion).
+ * Linien sind halbtransparentes Schwarz statt fester Grautöne — sie passen
+ * sich jeder Fläche an, auf der sie liegen.
+ */
 @theme {
-  --color-ink: #05070a;
-  --color-bg: #0a0e13;
-  --color-surface: #10161e;
-  --color-surface-2: #161e28;
-  --color-surface-3: #1d2733;
-  --color-line: #212c39;
-  --color-line-soft: #18212c;
-  --color-muted: #75828f;
-  --color-dim: #94a1af;
-  --color-accent: #4ade80;
-  --color-accent-deep: #16351f;
-  --color-danger: #f2604a;
-  --color-warn: #f5b544;
-  --color-info: #4aa8f2;
+  --color-bg: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #f5f5f7;
+  --color-surface-3: #e8e8ed;
+  --color-line: oklch(0 0 0 / 0.1);
+  --color-line-soft: oklch(0 0 0 / 0.06);
+  --color-fg: #1d1d1f;
+  --color-dim: #424245;
+  --color-muted: #6e6e73;
+  --color-accent: #1f4fd6;
+  --color-accent-strong: #1a43b8;
+  --color-danger: #d92d3a;
+  --color-warn: #b35c00;
+  --color-info: #1f4fd6;
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Auf dem Mac die Systemschrift (SF Pro), sonst Inter als nächster Verwandter. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', 'Inter', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+
+  --shadow-card: 0 0 0 0.5px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04), 0 2px 8px -2px oklch(0 0 0 / 0.04);
+  --shadow-raised: 0 0 0 0.5px oklch(0 0 0 / 0.06), 0 2px 4px oklch(0 0 0 / 0.04), 0 8px 24px -6px oklch(0 0 0 / 0.08);
+  --shadow-pop: 0 0 0 0.5px oklch(0 0 0 / 0.08), 0 12px 40px -8px oklch(0 0 0 / 0.18), 0 4px 12px -4px oklch(0 0 0 / 0.08);
+  --shadow-selected: 0 0 0 2px var(--color-accent), 0 8px 24px -8px oklch(0.48 0.2 264 / 0.3);
+  --shadow-focus: 0 0 0 4px oklch(0.48 0.2 264 / 0.16);
+
+  /* Kräftige Kurven statt der eingebauten — die sind für UI zu schwach. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --default-transition-duration: 180ms;
+  --default-transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+
+  --animate-pop-in: pop-in 180ms var(--ease-out) both;
+  --animate-modal-in: modal-in 260ms var(--ease-out) both;
+  --animate-fade-in: fade-in 200ms var(--ease-out) both;
+  --animate-row-in: row-in 300ms var(--ease-out) both;
+  /* Ausblenden ist bewusst schneller als Einblenden. */
+  --animate-modal-out: modal-out 160ms var(--ease-out) both;
+  --animate-fade-out: fade-out 160ms var(--ease-out) both;
+
+  @keyframes modal-out {
+    to {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+  @keyframes modal-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(8px);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
 }
 
-* {
-  border-color: var(--color-line);
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: oklch(0.48 0.2 264 / 0.2);
+  }
+
+  /* Tastaturfokus sichtbar, Mausklick ohne Rahmen. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  button,
+  [role='button'],
+  a {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  /*
+   * Druckrückmeldung für alles Klickbare. `scale` statt `transform`, damit
+   * sie nicht mit Tailwinds `translate`-Klassen kollidiert.
+   */
+  button:not(:disabled),
+  a[href] {
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+    transition-duration: 180ms;
+    transition-timing-function: var(--ease-out);
+  }
+  button:not(:disabled):active,
+  a[href]:active {
+    scale: 0.97;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
+/* Große Flächen dürfen nur kaum merklich nachgeben, sonst wirkt es wackelig. */
+.press-soft:active {
+  scale: 0.995 !important;
 }
 
-body {
-  background: var(--color-bg);
-  color: #e7edf4;
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Große Kennzahlen: engere Laufweite, damit sie als Block lesen. */
+.figure {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+/* Durchscheinendes Material wie macOS-Leisten. */
+.material {
+  background: oklch(1 0 0 / 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .material {
+    background: #fff;
+    backdrop-filter: none;
+  }
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-surface-3);
+  background: oklch(0 0 0 / 0.14);
+  background-clip: padding-box;
   border-radius: 999px;
-  border: 3px solid var(--color-bg);
+  border: 4px solid transparent;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2b3846;
+  background: oklch(0 0 0 / 0.28);
+  background-clip: padding-box;
 }
 
 input[type='number']::-webkit-outer-spin-button,
@@ -58,46 +197,83 @@ input[type='number']::-webkit-inner-spin-button {
   margin: 0;
 }
 
+/* Schieberegler wie in macOS: blaue Füllung, weißer Knopf mit Schatten. */
 input[type='range'] {
   appearance: none;
   height: 4px;
   border-radius: 999px;
-  background: var(--color-surface-3);
+  background: linear-gradient(
+    to right,
+    var(--color-accent) 0 var(--fill, 0%),
+    var(--color-surface-3) var(--fill, 0%) 100%
+  );
+  cursor: pointer;
 }
 input[type='range']::-webkit-slider-thumb {
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
-  background: var(--color-accent);
-  border: 3px solid var(--color-bg);
-  box-shadow: 0 0 0 1px var(--color-accent);
+  background: #fff;
+  box-shadow:
+    0 0 0 0.5px oklch(0 0 0 / 0.12),
+    0 2px 6px oklch(0 0 0 / 0.16);
+  transition: scale 180ms var(--ease-out);
+}
+input[type='range']:active::-webkit-slider-thumb {
+  scale: 1.1;
+}
+input[type='range']::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow:
+    0 0 0 0.5px oklch(0 0 0 / 0.12),
+    0 2px 6px oklch(0 0 0 / 0.16);
+}
+
+select {
   cursor: pointer;
 }
 
-@keyframes arbify-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
+/* Ruhiger Lebenszeichen-Puls: ein Ring, der sich ausbreitet, statt eines Blinkens. */
 .live-dot {
-  animation: arbify-pulse 1.6s ease-in-out infinite;
+  position: relative;
 }
-
-@keyframes arbify-in {
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: live-ring 2s var(--ease-out) infinite;
+}
+@keyframes live-ring {
   from {
-    opacity: 0;
-    transform: translateY(6px);
+    opacity: 0.6;
+    transform: scale(1);
   }
   to {
-    opacity: 1;
-    transform: none;
+    opacity: 0;
+    transform: scale(3);
   }
 }
-.animate-in-up {
-  animation: arbify-in 0.22s ease-out both;
+
+@media (prefers-reduced-motion: reduce) {
+  /* Bewegung raus, Überblendungen bleiben — sie helfen beim Verstehen. */
+  *:not(.animate-spin),
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .live-dot::after {
+    display: none;
+  }
+  button:not(:disabled):active,
+  a[href]:active {
+    scale: none;
+  }
 }

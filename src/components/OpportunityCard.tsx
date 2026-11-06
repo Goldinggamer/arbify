@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { Opportunity, Settings } from '../types'
 import { BOOKMAKER_BY_ID } from '../data/bookmakers'
 import { WARNING_BY_ID } from '../data/warnings'
@@ -11,35 +12,49 @@ export function OpportunityCard({
   settings,
   selected,
   onSelect,
+  index = 0,
 }: {
   opp: Opportunity
   settings: Settings
   selected: boolean
   onSelect: () => void
+  /** Position in der Liste — nur für die gestaffelte Einblendung. */
+  index?: number
 }) {
   const arb = arbFor(opp, settings)
 
+  // Ein `div` statt `button`: in der Karte stecken Links zu den Buchmachern,
+  // und ein `<a>` in einem `<button>` ist ungültiges HTML.
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
       onClick={onSelect}
-      className={`w-full rounded-2xl border p-3 text-left transition ${
-        selected
-          ? 'border-accent/40 bg-surface-2'
-          : 'border-line-soft bg-surface hover:border-line hover:bg-surface-2'
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+      style={{ animationDelay: `${Math.min(index, 12) * 30}ms` } as CSSProperties}
+      className={`press-soft w-full animate-row-in rounded-[18px] bg-white p-4 text-left transition-[box-shadow,scale] ${
+        selected ? 'shadow-selected' : 'shadow-card hover:shadow-raised'
       }`}
     >
-      <div className="flex items-stretch gap-3">
+      <div className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-3.5 md:grid-cols-[92px_minmax(150px,1fr)_minmax(130px,200px)_minmax(300px,480px)] md:items-center">
         {/* Kennzahlen */}
-        <div className="flex w-[104px] shrink-0 flex-col justify-center gap-0.5 pl-1">
-          <span className="text-[22px] font-bold leading-none text-accent">{pct(arb.arbPercent)}</span>
-          <span className="text-[12px] font-semibold text-muted">
+        <div className="flex flex-col gap-1">
+          <span className="figure text-[24px] font-semibold leading-none text-accent">{pct(arb.arbPercent)}</span>
+          <span className="tabular text-[12.5px] font-medium text-muted">
             {arb.guaranteedProfit >= 0 ? '+' : ''}
             {money(arb.guaranteedProfit)}
           </span>
           {arb.legs.some((l) => l.taxed) && (
             <span
               title="Mindestens ein Anbieter gibt die 5,3 % Wettsteuer an den Kunden weiter. Die Rendite links enthält diesen Abzug nicht."
-              className="mt-1 w-fit rounded bg-warn/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-warn"
+              className="mt-1 w-fit rounded-full bg-warn/10 px-2 py-0.5 text-[10.5px] font-medium text-warn"
             >
               Wettsteuer
             </span>
@@ -47,67 +62,63 @@ export function OpportunityCard({
         </div>
 
         {/* Partie */}
-        <div className="flex w-[190px] shrink-0 flex-col justify-center gap-1 border-l border-line-soft pl-3">
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted">
-            {relativeTime(opp.startTime)}
-          </div>
-          <div className="text-[13px] font-semibold leading-tight">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-[12px] text-muted">{relativeTime(opp.startTime)}</span>
+          <span className="text-[15px] font-semibold leading-snug tracking-[-0.015em]">
             {opp.home}
-            <span className="text-muted"> vs </span>
+            <span className="font-normal text-muted"> – </span>
             {opp.away}
-          </div>
-          <div className="truncate text-[11px] text-muted">{opp.league}</div>
+          </span>
+          <span className="truncate text-[12px] text-muted">{opp.league}</span>
         </div>
 
         {/* Markt */}
-        <div className="flex w-[150px] shrink-0 flex-col justify-center border-l border-line-soft pl-3">
-          <span className="text-[10px] uppercase tracking-wider text-muted">{opp.sport}</span>
-          <span className="text-[14px] font-bold leading-tight">{opp.market}</span>
-          {opp.warnings.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {opp.warnings.map((w) => (
-                <span
-                  key={w}
-                  title={WARNING_BY_ID[w].detail}
-                  className="flex items-center gap-1 rounded bg-warn/10 px-1.5 py-0.5 text-[9px] font-semibold text-warn"
-                >
-                  <IconWarn className="h-2.5 w-2.5" />
-                  {WARNING_BY_ID[w].label}
-                </span>
-              ))}
+        <div className="col-span-2 flex min-w-0 flex-col gap-0.5 md:col-span-1">
+          <span className="text-[12px] text-muted">{opp.sport}</span>
+          <span className="text-[14px] font-medium leading-snug">{opp.market}</span>
+          {opp.warnings.some((w) => w !== 'betting-tax') && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {opp.warnings
+                .filter((w) => w !== 'betting-tax')
+                .map((w) => (
+                  <span
+                    key={w}
+                    title={WARNING_BY_ID[w].detail}
+                    className="flex items-center gap-1 rounded-full bg-warn/10 px-2 py-0.5 text-[10.5px] font-medium text-warn"
+                  >
+                    <IconWarn className="h-2.5 w-2.5" />
+                    {WARNING_BY_ID[w].label}
+                  </span>
+                ))}
             </div>
           )}
         </div>
 
-        {/* Beine */}
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5 border-l border-line-soft pl-3">
+        {/* Beine: Anbieter · Ausgang · Quote · Einsatz · Link */}
+        <div className="col-span-2 flex min-w-0 flex-col gap-1.5 md:col-span-1">
           {arb.legs.map((leg) => {
             const book = BOOKMAKER_BY_ID[leg.bookmakerId]
             return (
-              <div
-                key={leg.index}
-                className="flex items-center gap-2 rounded-xl bg-surface-2/70 px-2.5 py-2"
-              >
-                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{leg.label}</span>
-                <span className="rounded-lg bg-ink px-2.5 py-1 text-[13px] font-bold tabular-nums">
-                  {moneyShort(leg.stake)}
-                </span>
+              <div key={leg.index} className="flex h-11 items-center gap-3 rounded-xl bg-surface-2 pl-2.5 pr-1.5">
                 <BookLogo id={leg.bookmakerId} size="sm" />
+                <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{leg.label}</span>
                 <span
-                  className={`w-12 text-right text-[13px] font-semibold tabular-nums ${
-                    leg.taxed ? 'text-warn' : 'text-dim'
-                  }`}
-                  title={leg.taxed ? 'Auf dieses Bein kommt die Wettsteuer noch drauf' : undefined}
+                  className={`tabular w-11 text-right text-[13.5px] font-semibold ${leg.taxed ? 'text-warn' : 'text-fg'}`}
+                  title={leg.taxed ? `Quote bei ${book?.name} — hier kommt die Wettsteuer noch drauf` : `Quote bei ${book?.name}`}
                 >
                   {fmtOdds(leg.odds)}
+                </span>
+                <span className="tabular min-w-[78px] rounded-lg bg-white px-2.5 py-1 text-right text-[13.5px] font-semibold shadow-[0_0_0_0.5px_oklch(0_0_0/0.08),0_1px_2px_oklch(0_0_0/0.05)]">
+                  {moneyShort(leg.stake)}
                 </span>
                 <a
                   href={opp.links?.[leg.bookmakerId] ?? book?.url}
                   target="_blank"
                   rel="noreferrer noopener"
                   onClick={(e) => e.stopPropagation()}
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface-3 text-muted transition hover:bg-accent hover:text-ink"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-accent hover:bg-accent hover:text-white"
                   title={`Bei ${book?.name} öffnen`}
+                  aria-label={`Bei ${book?.name} öffnen`}
                 >
                   <IconArrowUpRight className="h-3.5 w-3.5" />
                 </a>
@@ -116,6 +127,6 @@ export function OpportunityCard({
           })}
         </div>
       </div>
-    </button>
+    </div>
   )
 }
