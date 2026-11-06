@@ -37,6 +37,17 @@ type ScanSnapshot = {
   lastRefresh: string
   startedAt: string
   durationMs: number
+  /**
+   * Fortschritt des ersten Durchlaufs nach dem Start. Solange `warming` gilt,
+   * ist der Stand unvollständig: entweder vom letzten Lauf gespeichert oder
+   * erst ein Teil der Bücher frisch. Die Oberfläche zeigt dann „lädt“ statt
+   * „keine Arbitrage“.
+   */
+  warming: boolean
+  booksDone: number
+  booksTotal: number
+  /** Stand stammt (teilweise) aus der gespeicherten Datei des letzten Laufs. */
+  restored: boolean
 }
 
 const empty: ScanSnapshot = {
@@ -55,6 +66,10 @@ const empty: ScanSnapshot = {
   lastRefresh: new Date(0).toISOString(),
   startedAt: new Date(0).toISOString(),
   durationMs: 0,
+  warming: true,
+  booksDone: 0,
+  booksTotal: ADAPTERS.length,
+  restored: false,
 }
 
 export type ScanConfig = {
@@ -77,17 +92,49 @@ let lastBooks: AdapterResult[] = []
 let discoveryInFlight: Promise<ScanSnapshot> | null = null
 let refreshInFlight: Promise<ScanSnapshot> | null = null
 
+/** Bis der erste vollständige Durchlauf durch ist, wird schrittweise veröffentlicht. */
+let warming = true
+let restored = false
+
 export const getSnapshot = (): ScanSnapshot => snapshot
 /** Rohbestand des letzten Durchlaufs — für den Golden-Test. */
 export const getRawPool = (): RawEvent[] => rawPool
+/** Bücher des letzten Durchlaufs, ohne Events — zum Speichern neben dem Rohbestand. */
+export const getLastBooks = (): AdapterResult[] => lastBooks
+
+/**
+ * Übernimmt einen gespeicherten Rohbestand als Startstand, damit die
+ * Oberfläche sofort etwas zeigt. Die Quoten tragen ihren alten
+ * `fetchedAt`; `scan.ts` markiert sie deshalb von selbst als veraltet.
+ * Ohne Wirkung, sobald schon ein frischer Stand da ist.
+ */
+export function restorePool(pool: RawEvent[], books: AdapterResult[], config: ScanConfig): ScanSnapshot {
+  if (rawPool.length || !pool.length) return snapshot
+  rawPool = pool
+  lastBooks = books
+  restored = true
+  const t0 = Date.now()
+  return evaluate(config, new Date().toISOString(), t0, 'refresh', 0)
+}
 
 /* ------------------------------------------------------------- Auswertung */
 
-function evaluate(config: ScanConfig, startedAt: string, t0: number, kind: 'discovery' | 'refresh') {
+function evaluate(
+  config: ScanConfig,
+  startedAt: string,
+  t0: number,
+  kind: 'discovery' | 'refresh',
+  booksDone = ADAPTERS.length,
+) {
   const { matched, stats } = matchEvents(rawPool)
   const multi = matched.filter((m) => m.sources.length > 1)
   const { opportunities, margins } = scanForArbitrage(matched, config.minPercent)
-  const now = new Date().toISOString()
+  // Ein gespeicherter Stand ist so alt wie seine jüngste Quote, nicht „jetzt“ —
+  // sonst zeigte die Oberfläche alte Quoten als frisch an.
+  const now =
+    restored && booksDone === 0
+      ? new Date(Math.max(0, ...rawPool.map((e) => new Date(e.fetchedAt).getTime() || 0))).toISOString()
+      : new Date().toISOString()
 
   snapshot = {
     opportunities,
@@ -105,6 +152,10 @@ function evaluate(config: ScanConfig, startedAt: string, t0: number, kind: 'disc
     lastRefresh: now,
     startedAt,
     durationMs: Date.now() - t0,
+    warming,
+    booksDone,
+    booksTotal: ADAPTERS.length,
+    restored,
   }
   return snapshot
 }
@@ -243,8 +294,27 @@ async function doDiscovery(config: ScanConfig): Promise<ScanSnapshot> {
   // Telemetrie je Durchlauf, damit ein schlechter Lauf nicht über Stunden verwässert.
   resetHttpStats()
 
-  const books = await Promise.all(ADAPTERS.map((a) => sweep(a, config)))
+  // Erster Lauf nach dem Start: jedes Buch erscheint, sobald es fertig ist,
+  // statt auf das langsamste (Betano, ~30 s) und die ganze Tiefe zu warten.
+  // Bücher, die noch laufen, behalten bis dahin den gespeicherten Stand.
+  const progress = warming ? partialPublisher(config, startedAt, t0) : null
+  const books = await Promise.all(
+    ADAPTERS.map((a) =>
+      sweep(a, config).then((b) => {
+        progress?.done(b)
+        return b
+      }),
+    ),
+  )
+  progress?.stop()
   const shallow = books.flatMap((b) => b.events)
+  if (warming) {
+    // Alle Bücher frisch, die Markttiefe folgt noch.
+    rawPool = shallow
+    lastBooks = books.map((b) => ({ ...b, eventCount: b.events.length, events: [] }))
+    restored = false
+    evaluate(config, startedAt, t0, 'discovery')
+  }
 
   // Nur Partien bei mindestens zwei Büchern lohnen die teure Markttiefe.
   const preMatched = matchEvents(shallow).matched
@@ -305,7 +375,55 @@ async function doDiscovery(config: ScanConfig): Promise<ScanSnapshot> {
   rawPool = deepened.flatMap((b) => b.events)
   lastBooks = deepened.map((b) => ({ ...b, eventCount: b.events.length, events: [] }))
   snapshot = { ...snapshot, deepenedCount: deepened.reduce((s, b) => s + (b.deepened ?? 0), 0) }
+  warming = false
+  restored = false
   return evaluate(config, startedAt, t0, 'discovery')
+}
+
+/**
+ * Veröffentlicht Zwischenstände, während die Bücher eintreffen. Ausgewertet
+ * wird höchstens alle 300 ms: Matching und Scan über einige tausend Events
+ * kosten spürbar CPU, und die Bücher kommen in den ersten Sekunden dicht
+ * hintereinander.
+ */
+function partialPublisher(config: ScanConfig, startedAt: string, t0: number) {
+  const base = rawPool
+  const baseBooks = lastBooks
+  const fresh = new Map<string, AdapterResult>()
+  let finished = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let lastRun = 0
+
+  const publish = () => {
+    timer = null
+    lastRun = Date.now()
+    const doneIds = new Set(fresh.keys())
+    rawPool = [
+      ...base.filter((e) => !doneIds.has(e.bookmakerId)),
+      ...[...fresh.values()].flatMap((b) => b.events),
+    ]
+    lastBooks = [
+      ...baseBooks.filter((b) => !doneIds.has(b.bookmakerId)),
+      ...[...fresh.values()].map((b) => ({ ...b, eventCount: b.events.length, events: [] })),
+    ]
+    evaluate(config, startedAt, t0, 'refresh', finished)
+  }
+
+  return {
+    done(book: AdapterResult) {
+      finished++
+      // Ein gescheitertes Buch behält vorerst den gespeicherten Stand — als
+      // veraltet markiert ist der nützlicher als gar keiner.
+      if (!book.error) fresh.set(book.bookmakerId, book)
+      if (timer) return
+      timer = setTimeout(publish, Math.max(0, 300 - (Date.now() - lastRun)))
+    },
+    /** Vor dem Endstand aufrufen — ein verspäteter Zwischenstand darf ihn nicht überschreiben. */
+    stop() {
+      if (timer) clearTimeout(timer)
+      timer = null
+    },
+  }
 }
 
 /* ----------------------------------------------------------------- Refresh */

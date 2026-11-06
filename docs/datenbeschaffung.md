@@ -131,6 +131,39 @@ Jeder Discovery-Lauf ist zweistufig:
 `/api/scan` gibt nie den alten Stand zurück: läuft gerade ein Durchlauf, wird
 er abgewartet und danach ein frischer gestartet.
 
+## Schneller Start
+
+Ein kalter Durchlauf braucht rund eine Minute: die meisten Bücher liefern in
+unter fünf Sekunden, Betano aber braucht ~30 s (ein Abruf je Liga, gedeckelt
+durch `HOST_POLICIES`), und die Markttiefe kommt danach noch einmal so lange
+dazu. Die Abrufe laufen längst parallel — schneller machen ließe sich nur das
+Warten, nicht die Abrufe selbst, ohne die Ratengrenzen zu reißen.
+
+Deshalb zwei Maßnahmen, beide nur für den ersten Durchlauf nach dem Start:
+
+1. **Gespeicherter Stand** (`server/cache.ts`): Nach jedem vollständigen
+   Durchlauf schreibt der Server den Rohbestand nach `.arbify-cache.json`
+   (gitignored, über `ARBIFY_CACHE_FILE` verlegbar). Beim Start wird er in
+   Millisekunden geladen, sofern er höchstens 30 Minuten alt ist; inzwischen
+   angepfiffene Partien fallen heraus. Die Quoten behalten ihr altes
+   `fetchedAt`, `scan.ts` markiert sie also von selbst als veraltet, und
+   `lastRefresh` ist das Alter der jüngsten gespeicherten Quote, nicht „jetzt“.
+2. **Schrittweises Veröffentlichen** (`partialPublisher` in `store.ts`): Jedes
+   Buch ersetzt seinen gespeicherten Stand, sobald es geliefert hat; höchstens
+   alle 300 ms wird neu ausgewertet. Ein gescheitertes Buch behält bis zum
+   Ende des Durchlaufs den gespeicherten Stand. Nach dem Sweep wird einmal mit
+   allen frischen Büchern ausgewertet, nach der Tiefe wie immer.
+
+Der Schnappschuss trägt dafür `warming`, `booksDone`/`booksTotal` und
+`restored`; die Oberfläche zeigt solange „lädt“ statt „keine Arbitrage“ und
+fragt alle 400 ms statt alle 2 s nach. Gemessen: mit gespeichertem Stand steht
+die Liste nach ~0,5 s, ohne ihn kommen die ersten Bücher nach ~1 s und 14 von
+16 nach ~5 s.
+
+Der Endstand eines Durchlaufs ist unverändert (Golden-Test byte-gleich bis auf
+`marketKeyCollisions`: der Zähler sammelt über alle Auswertungen, und der
+erste Durchlauf wertet einmal mehr aus).
+
 ## Nicht angebundene Anbieter
 
 | Anbieter | Stand |

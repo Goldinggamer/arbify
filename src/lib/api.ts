@@ -26,6 +26,13 @@ export type ScanStatus = {
   books: { bookmakerId: string; durationMs: number; error?: string }[]
   /** Zeitfenster des Scanners in Stunden — vom Server, damit die Oberfläche gleich zuschneidet. */
   windowHours: number
+  /** Erster Durchlauf nach dem Serverstart läuft noch — der Stand ist unvollständig. */
+  warming: boolean
+  /** Wie viele Bücher im ersten Durchlauf schon frisch geliefert haben */
+  booksDone: number
+  booksTotal: number
+  /** Stand stammt (teilweise) aus dem gespeicherten letzten Lauf */
+  restored: boolean
   /** Knappste Vergleiche, auch wenn sie keine Arbitrage sind */
   margins: {
     event: string
@@ -72,6 +79,10 @@ type ApiSnapshot = {
   lastRefresh?: string
   windowHours?: number
   startedAt: string
+  warming?: boolean
+  booksDone?: number
+  booksTotal?: number
+  restored?: boolean
 }
 
 const KNOWN_WARNINGS = new Set<string>(ALL_WARNING_IDS)
@@ -119,6 +130,10 @@ export async function fetchOpportunities(
       books: snap.books,
       windowHours: snap.windowHours ?? DEFAULT_WINDOW_HOURS,
       margins: snap.margins ?? [],
+      warming: snap.warming ?? false,
+      booksDone: snap.booksDone ?? 0,
+      booksTotal: snap.booksTotal ?? snap.books.length,
+      restored: snap.restored ?? false,
     },
   }
 }

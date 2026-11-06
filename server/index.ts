@@ -3,11 +3,15 @@ import { spawn } from 'node:child_process'
 import {
   forceDiscovery,
   forceRefresh,
+  getLastBooks,
+  getRawPool,
   getSnapshot,
+  restorePool,
   runDiscovery,
   runRefresh,
   type ScanConfig,
 } from './store.ts'
+import { loadCache, saveCache } from './cache.ts'
 import { collisionReport, unmappedReport } from './diagnostics.ts'
 import { rejectedReport } from './scan.ts'
 import { ADAPTERS } from './adapters/index.ts'
@@ -193,9 +197,25 @@ server.listen(PORT, () => {
       : 'Telefonmeldung: nicht eingerichtet (ARBIFY_NTFY_TOPIC oder ARBIFY_PUSHOVER_*)',
   )
   bleibWach()
+  void start()
+})
+
+/**
+ * Erst den gespeicherten Stand laden — das dauert Millisekunden und lässt die
+ * Oberfläche sofort etwas zeigen —, dann die Takte anwerfen.
+ */
+async function start(): Promise<void> {
+  const cached = await loadCache()
+  if (cached?.pool.length) {
+    const s = restorePool(cached.pool, cached.books, CONFIG)
+    console.log(
+      `Gespeicherter Stand geladen: ${s.eventCount} Events, ${s.opportunities.length} Arbs ` +
+        `(Quoten von ${new Date(s.lastRefresh).toLocaleTimeString('de-DE')}, werden jetzt erneuert)`,
+    )
+  }
   void discoveryLoop()
   void refreshLoop()
-})
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -216,6 +236,10 @@ async function discoveryLoop(): Promise<void> {
             : ''),
       )
       await maybeNotify(s.opportunities)
+      // Für den nächsten Start. Ein Fehler beim Schreiben darf den Takt nicht anhalten.
+      saveCache(getRawPool(), getLastBooks()).catch((e) =>
+        console.error('Speichern des Stands fehlgeschlagen:', e instanceof Error ? e.message : e),
+      )
     } catch (e) {
       console.error('Discovery fehlgeschlagen:', e)
     }

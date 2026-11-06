@@ -17,3 +17,8 @@ tsconfig.tsbuildinfo
 # Zugangsdaten aller Art, falls sie je über die Umgebung gesetzt werden.
 .env
 .env.*
+
+# Gespeicherter Quotenstand für den schnellen Start. Bookmaker-Daten,
+# gehören nicht ins Repository.
+.arbify-cache.json
+.arbify-cache.json.tmp

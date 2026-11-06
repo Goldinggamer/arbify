@@ -31,7 +31,7 @@ node scripts/golden.ts replay <tape.json> <out.json>  # offline, frozen clock, ~
 ```
 Replay the same tape before and after a change; the outputs must be byte-identical unless the change is meant to alter behaviour. Tapes contain bookmaker data, so keep them out of the repo. A large tape may need `NODE_OPTIONS=--max-old-space-size=8192`.
 
-Server env vars: `PORT`, `DISCOVERY_INTERVAL_MS`, `REFRESH_INTERVAL_MS`, `WINDOW_HOURS`, `MAX_EVENTS`, `MIN_PERCENT`, `MAX_DEPTH_EVENTS`, `MAX_HOT_EVENTS`, `HOT_THRESHOLD`. Phone alert config is stored in `.arbify-alerts.json` (gitignored).
+Server env vars: `PORT`, `DISCOVERY_INTERVAL_MS`, `REFRESH_INTERVAL_MS`, `WINDOW_HOURS`, `MAX_EVENTS`, `MIN_PERCENT`, `MAX_DEPTH_EVENTS`, `MAX_HOT_EVENTS`, `HOT_THRESHOLD`. Phone alert config is stored in `.arbify-alerts.json` (gitignored). The last raw pool is saved to `.arbify-cache.json` (gitignored, `ARBIFY_CACHE_FILE`) and restored on start so the UI has data immediately (see `docs/datenbeschaffung.md`, „Schneller Start“).
 
 ## Architecture
 

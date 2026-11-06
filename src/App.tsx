@@ -26,6 +26,8 @@ import { IconSearch, IconSort } from './components/icons'
 
 /** Wie oft der Stand vom Backend geholt wird — liest nur den Speicher des Servers, kostet die Buchmacher nichts. */
 const POLL_MS = 2_000
+/** Solange der erste Durchlauf läuft, trudeln die Bücher im Sekundentakt ein — dann öfter nachsehen. */
+const POLL_WARMING_MS = 400
 
 const DEFAULT_FILTERS: Filters = {
   bookmakers: BOOKMAKERS.map((b) => b.id),
@@ -132,7 +134,9 @@ function sanitizeFilters(f: Filters): Filters {
 }
 
 export default function App() {
-  const [pool, setPool] = useState<Opportunity[]>(() => generateOpportunities(48))
+  // Leer starten statt mit Demo-Daten: das Backend antwortet meist in
+  // Millisekunden, und sonst blitzen kurz erfundene Wetten auf.
+  const [pool, setPool] = useState<Opportunity[]>([])
   const [filters, setFilters] = useState<Filters>(() =>
     sanitizeFilters(loadStored('filters', DEFAULT_FILTERS)),
   )
@@ -175,30 +179,40 @@ export default function App() {
     )
   }, [filters, settings])
 
-  // Echte Daten vom Scanner-Backend holen. Ist es nicht erreichbar, bleibt
-  // der Demo-Generator aktiv, damit die Oberfläche bedienbar bleibt.
+  // Echte Daten vom Scanner-Backend holen. Ist es beim ersten Versuch nicht
+  // erreichbar, springt der Demo-Generator ein, damit die Oberfläche bedienbar
+  // bleibt.
   useEffect(() => {
     let cancelled = false
+    let timer = 0
+    let everOnline = false
     const ctrl = new AbortController()
 
     const load = async () => {
+      let warming = false
       try {
         const { opportunities, status } = await fetchOpportunities(ctrl.signal)
         if (cancelled) return
+        everOnline = true
+        warming = status.warming
         setStatus(status)
         setPool(opportunities)
         setLastUpdate(new Date())
       } catch {
-        if (!cancelled) setStatus((s) => (s ? { ...s, online: false } : null))
+        if (cancelled) return
+        setStatus((s) => (s ? { ...s, online: false } : null))
+        if (!everOnline) setPool((p) => (p.length ? p : generateOpportunities(48)))
       }
+      // `setTimeout` statt `setInterval`: der Abstand hängt davon ab, ob der
+      // Server noch aufwärmt.
+      timer = window.setTimeout(load, warming ? POLL_WARMING_MS : POLL_MS)
     }
 
     void load()
-    const timer = window.setInterval(load, POLL_MS)
     return () => {
       cancelled = true
       ctrl.abort()
-      window.clearInterval(timer)
+      window.clearTimeout(timer)
     }
   }, [])
 
@@ -335,7 +349,13 @@ export default function App() {
           {/* Liste */}
           <div className="mt-6 space-y-3">
             {results.length === 0 ? (
-              <EmptyState status={status} sports={filters.sports} onReset={() => setFilters(DEFAULT_FILTERS)} />
+              <EmptyState
+                status={status}
+                // Vor der ersten Antwort ist der Bestand leer — weder Backend- noch Demo-Daten.
+                loading={(!status && !pool.length) || !!status?.warming}
+                sports={filters.sports}
+                onReset={() => setFilters(DEFAULT_FILTERS)}
+              />
             ) : (
               results.map((opp, i) => (
                 <OpportunityCard
@@ -391,10 +411,12 @@ export default function App() {
  */
 function EmptyState({
   status,
+  loading,
   sports,
   onReset,
 }: {
   status: ScanStatus | null
+  loading: boolean
   sports: string[]
   onReset: () => void
 }) {
@@ -402,6 +424,9 @@ function EmptyState({
   // Sonst wählt jemand "nur Tennis" und bekommt darunter weiter Fußball
   // vorgeführt — dieselbe Verwirrung, gegen die der Filter gebaut wurde.
   const margins = (status?.margins ?? []).filter((m) => sports.includes(m.sport))
+
+  // Noch keine Antwort oder erster Durchlauf: das ist „lädt“, nicht „nichts gefunden“.
+  if (loading) return <LoadingState status={status} />
 
   return (
     <div className="mx-auto mt-14 max-w-2xl animate-fade-in px-1">
@@ -468,12 +493,60 @@ function EmptyState({
   )
 }
 
+/** Erster Durchlauf: Fortschritt über die Bücher statt einer leeren Liste. */
+function LoadingState({ status }: { status: ScanStatus | null }) {
+  const done = status?.booksDone ?? 0
+  const total = status?.booksTotal || 16
+  const share = status ? Math.max(0.04, done / total) : 0.04
+  return (
+    <div className="mx-auto mt-14 max-w-sm animate-fade-in text-center">
+      <p className="text-[19px] font-semibold tracking-[-0.02em]">Quoten werden geladen</p>
+      <p className="mt-1.5 text-[14px] leading-relaxed text-muted">
+        {done < total
+          ? `${done} von ${total} Buchmachern geliefert. Jeder erscheint, sobald er fertig ist.`
+          : 'Alle Buchmacher geliefert, die Zusatzmärkte folgen.'}
+      </p>
+      <div className="mx-auto mt-5 h-1.5 w-48 overflow-hidden rounded-full bg-black/[0.06]">
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-500"
+          style={{ width: `${share * 100}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 /**
  * Zeigt an, woher die Daten kommen. Ohne diesen Hinweis wäre nicht
  * erkennbar, ob gerade echte Quoten oder Demo-Daten in der Liste stehen —
  * ein Unterschied, der bei echtem Geldeinsatz zählt.
  */
 function DataSourceBadge({ status }: { status: ScanStatus | null }) {
+  if (status?.online && status.warming) {
+    return (
+      <span
+        title={
+          status.restored
+            ? 'Die Liste zeigt den gespeicherten Stand des letzten Laufs; die Bücher werden gerade neu abgefragt. Alte Quoten sind als veraltet markiert.'
+            : 'Erster Durchlauf nach dem Start — die Bücher erscheinen, sobald sie geliefert haben.'
+        }
+        className="flex h-6 items-center gap-1.5 rounded-full bg-accent/10 px-2.5 text-[12px] font-medium text-accent"
+      >
+        <span className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-accent/25 border-t-accent [animation-duration:700ms]" />
+        {status.booksDone < status.booksTotal ? (
+          <>
+            {status.restored ? 'Letzter Stand · ' : ''}Lädt{' '}
+            <span className="tabular">
+              {status.booksDone}/{status.booksTotal}
+            </span>{' '}
+            Buchmacher
+          </>
+        ) : (
+          'Zusatzmärkte werden geladen'
+        )}
+      </span>
+    )
+  }
   if (!status?.online) {
     return (
       <span
